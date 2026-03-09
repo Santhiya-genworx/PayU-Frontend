@@ -99,10 +99,25 @@ export const submitPurchaseOrder = async (data: POData, file: File) => {
   return response.data;
 };
 
-// Poll upload job status (same pattern as extraction polling)
-export const pollUploadStatus = async (
-  fileId: string
-): Promise<{ status: string; error?: string }> => {
+export const pollUploadStatus = async ( fileId: string ): Promise<{ status: string; error?: string }> => {
   const response = await api.get(`/process/upload/status/${fileId}`, { withCredentials: true });
   return response.data;
 };
+
+export const overrideInvoice = async (data: InvoiceData, file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("data", JSON.stringify(data));
+
+  const response = await api.post("/process/invoice/override", formData, { withCredentials: true });
+  return response.data;
+}
+
+export const overridePurchaseOrders = async (data: POData, file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("data", JSON.stringify(data));
+
+  const response = await api.post("/process/purchase-order/override", formData, { withCredentials: true });
+  return response.data;
+}

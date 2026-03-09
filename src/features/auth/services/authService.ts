@@ -12,6 +12,11 @@ export const logout = async () => {
 }
 
 export const getProfile = async () => {
-    const response = await api.get("/auth/users/profile",{withCredentials:true});
+    const response = await api.get("/auth/users/me",{withCredentials:true});
     return response.data
+}
+
+export const refresh = async () => {
+    const response = await api.get("/auth/refresh", { withCredentials: true })
+    return response.data;
 }

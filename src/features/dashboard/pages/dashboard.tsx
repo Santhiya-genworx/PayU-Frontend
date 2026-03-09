@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { Navigate } from "react-router-dom";
-import type { RootState } from "../../../app/store";
+import { type AppDispatch, type RootState } from "../../../app/store";
 import { addFiles, updateFile, removeFile } from "../slices/dashboardSlice";
 import Sidebar from "../components/sidebar";
 import UploadBox from "../components/upload_box";
@@ -9,13 +9,14 @@ import InvoicePreviewModal from "../../dashboard/components/invoice_preview";
 import {
   extractInvoice, extractPurchaseOrder, pollExtractionStatus,
   getTotalDocuments, getApprovedDocuments, getReviewedDocuments,
-  getRejectedDocuments, submitInvoice, submitPurchaseOrder, pollUploadStatus, getRecentActivity,
+  getRejectedDocuments, submitInvoice, submitPurchaseOrder, pollUploadStatus, getRecentActivity, overrideInvoice, overridePurchaseOrders
 } from "../../dashboard/services/dashboardService";
 import type { ExtractedFile } from "../../../types/process";
 import ProgressModal from "../components/progress_modal";
 import PurchaseOrderPreviewModal from "../components/purchase_order_preview";
 import type { ToastState } from "../../../types/toast";
 import Toast from "../../../components/common/toast";
+import { fetchUser } from "../../auth/slices/authSlice";
 
 type DocStatus = "success" | "pending" | "failed";
 type DocType = "Invoice" | "Purchase Order";
@@ -54,7 +55,9 @@ function StatCard({ label, value, sub, accentClass }: StatItem) {
 function Dashboard() {
   const user = useSelector((state: RootState) => state.auth.user);
   const extractedFiles = useSelector((state: RootState) => state.extraction.files);
-  const dispatch = useDispatch();
+  const loading = useSelector((state: RootState) => state.auth.loading);
+  const dispatch = useDispatch<AppDispatch>();
+  const [authChecked, setAuthChecked] = useState(false);
 
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "", type: "info" });
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -105,10 +108,16 @@ function Dashboard() {
     }
   };
 
-  useEffect(() => {
-    fetchStats();
-    fetchRecentActivity();
-  }, []);
+useEffect(() => {
+  const init = async () => {
+    await dispatch(fetchUser());
+    setAuthChecked(true);
+  };
+
+  init();
+  fetchStats();
+  fetchRecentActivity();
+}, [dispatch]);
 
   const handleUpload = async (files: File[]) => {
     const newEntries: ExtractedFile[] = files.map((file) => ({
@@ -158,7 +167,6 @@ function Dashboard() {
   };
 
   const handleClose = async () => {
-    // Don't clearFiles here — ProgressModal handles clearing only after all uploads complete
     setSelectedFile(null);
     setSaveModalOpen(false);
     await fetchStats();
@@ -170,6 +178,14 @@ function Dashboard() {
     if (filesToSave.length === 0) return;
     setSaveModalOpen(true);
   };
+
+  if (!authChecked || loading) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full"></div>
+      </div>
+    );
+  }
 
   if (!user) return <Navigate to="/" />;
 

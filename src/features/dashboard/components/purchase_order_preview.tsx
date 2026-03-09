@@ -67,6 +67,7 @@ export default function PurchaseOrderPreviewModal({
       ifsc_code: "",
     },
     ordered_items: [],
+    file_url: ""
   };
 
   const [form, setForm] = useState<POData>(emptyForm);
@@ -110,6 +111,7 @@ export default function PurchaseOrderPreviewModal({
         ifsc_code: raw.vendor?.ifsc_code ?? "",
       },
       ordered_items: raw.ordered_items ?? [],
+      file_url: raw.file_url ?? ""
     });
   }, [file.extractedData]);
 

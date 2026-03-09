@@ -19,4 +19,5 @@ export interface InvoiceData {
   tax_amount: number;
   discount_amount: number;
   total_amount: number;
+  file_url: string | null;
 }
