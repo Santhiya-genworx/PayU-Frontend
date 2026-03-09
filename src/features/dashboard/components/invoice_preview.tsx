@@ -75,6 +75,7 @@ export default function InvoicePreviewModal({
       ifsc_code: "",
     },
     invoice_items: [],
+    file_url: ""
   };
 
   const [form, setForm] = useState<InvoiceData>(emptyForm);
@@ -123,6 +124,7 @@ const handleCancel = () => {
         ifsc_code: raw.vendor?.ifsc_code ?? "",
       },
       invoice_items: raw.invoice_items ?? [],
+      file_url: raw.file_url ?? ""
     });
   }, [file.extractedData]);
 

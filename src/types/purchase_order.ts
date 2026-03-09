@@ -15,4 +15,5 @@ export interface POData {
   total_amount: number;
   vendor: Vendor;
   ordered_items: OrderedItem[];
+  file_url: string | null;
 }
