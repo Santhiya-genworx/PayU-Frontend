@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { Navigate } from "react-router-dom";
 import { type AppDispatch, type RootState } from "../../../app/store";
@@ -6,17 +6,15 @@ import { addFiles, updateFile, removeFile } from "../slices/dashboardSlice";
 import Sidebar from "../components/sidebar";
 import UploadBox from "../components/upload_box";
 import InvoicePreviewModal from "../../dashboard/components/invoice_preview";
-import {
-  extractInvoice, extractPurchaseOrder, pollExtractionStatus,
-  getTotalDocuments, getApprovedDocuments, getReviewedDocuments,
-  getRejectedDocuments, submitInvoice, submitPurchaseOrder, pollUploadStatus, getRecentActivity, overrideInvoice, overridePurchaseOrders
-} from "../../dashboard/services/dashboardService";
+import { extractInvoice, extractPurchaseOrder, pollExtractionStatus, getTotalDocuments, getApprovedDocuments, getReviewedDocuments, getRejectedDocuments,
+  submitInvoice, submitPurchaseOrder, pollUploadStatus, getRecentActivity, overrideInvoice, overridePurchaseOrder,} from "../../dashboard/services/dashboardService";
 import type { ExtractedFile } from "../../../types/process";
 import ProgressModal from "../components/progress_modal";
 import PurchaseOrderPreviewModal from "../components/purchase_order_preview";
 import type { ToastState } from "../../../types/toast";
 import Toast from "../../../components/common/toast";
 import { fetchUser } from "../../auth/slices/authSlice";
+import ConfirmationModal from "../components/confirmation_model";
 
 type DocStatus = "success" | "pending" | "failed";
 type DocType = "Invoice" | "Purchase Order";
@@ -44,32 +42,53 @@ function StatCard({ label, value, sub, accentClass }: StatItem) {
   return (
     <div className={`bg-white rounded-xl shadow-sm border-t-4 ${accentClass} p-5`}>
       <p className="text-sm text-gray-500 font-medium">{label}</p>
-      <p className="text-3xl font-bold text-gray-800 mt-1">
-        {typeof value === "number" ? value.toLocaleString("en-IN") : value}
-      </p>
+      <p className="text-3xl font-bold text-gray-800 mt-1">{typeof value === "number" ? value.toLocaleString("en-IN") : value}</p>
       <p className="text-xs text-gray-400 mt-1">{sub}</p>
     </div>
   );
 }
 
 function Dashboard() {
+  const dispatch = useDispatch<AppDispatch>();
+
   const user = useSelector((state: RootState) => state.auth.user);
   const extractedFiles = useSelector((state: RootState) => state.extraction.files);
   const loading = useSelector((state: RootState) => state.auth.loading);
-  const dispatch = useDispatch<AppDispatch>();
-  const [authChecked, setAuthChecked] = useState(false);
 
+  const [authChecked, setAuthChecked] = useState(false);
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "", type: "info" });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [stats, setStats] = useState([
-    { label: "Total Documents", value: 0 as number | string, sub: "All time", accentClass: "border-t-blue-600" },
-    { label: "Approved", value: 0 as number | string, sub: "0% success rate", accentClass: "border-t-green-600" },
-    { label: "Pending Review", value: 0 as number | string, sub: "Awaiting approval", accentClass: "border-t-amber-500" },
-    { label: "Failed", value: 0 as number | string, sub: "Needs attention", accentClass: "border-t-red-500" },
+    { label: "Total Documents", value: 0 as number | string, sub: "All time",          accentClass: "border-t-blue-600"  },
+    { label: "Approved",        value: 0 as number | string, sub: "0% success rate",   accentClass: "border-t-green-600" },
+    { label: "Pending Review",  value: 0 as number | string, sub: "Awaiting approval", accentClass: "border-t-amber-500" },
+    { label: "Failed",          value: 0 as number | string, sub: "Needs attention",   accentClass: "border-t-red-500"   },
   ]);
   const [selectedFile, setSelectedFile] = useState<ExtractedFile | null>(null);
-  const [saveModalOpen, setSaveModalOpen] = useState(false);
   const [recentActivity, setRecentActivity] = useState<ActivityRow[]>([]);
+
+  const [progressModalOpen, setProgressModalOpen] = useState(false);
+  const [uploadsInProgress, setUploadsInProgress] = useState(false);
+  const [confirmationFile, setConfirmationFile] = useState<ExtractedFile | null>(null);
+
+  const confirmOverrideRef = useRef<(() => void) | null>(null);
+  const cancelOverrideRef  = useRef<(() => void) | null>(null);
+
+  const handleConfirmOverride = () => {
+    setConfirmationFile(null);
+    confirmOverrideRef.current?.();
+  };
+
+  const handleCancelOverride = () => {
+    setConfirmationFile(null);
+    cancelOverrideRef.current?.();
+  };
+
+  const handleConfirmationRequired = (file: ExtractedFile) => {
+    if (progressModalOpen) {
+      setConfirmationFile(file);
+    }
+  };
 
   const fetchRecentActivity = async () => {
     try {
@@ -86,9 +105,7 @@ function Dashboard() {
         };
       });
       setRecentActivity(formatted);
-    } catch (err) {
-      console.error("Failed to fetch activity", err);
-    }
+    } catch (err) { console.error("Failed to fetch activity", err); }
   };
 
   const fetchStats = async () => {
@@ -103,27 +120,21 @@ function Dashboard() {
         { label: "Pending Review", value: reviewed, sub: "Awaiting approval", accentClass: "border-t-amber-500" },
         { label: "Failed", value: rejected, sub: "Needs attention", accentClass: "border-t-red-500" },
       ]);
-    } catch (err) {
-      console.error("Failed to fetch stats", err);
-    }
+    } catch (err) { console.error("Failed to fetch stats", err); }
   };
 
-useEffect(() => {
-  const init = async () => {
-    await dispatch(fetchUser());
-    setAuthChecked(true);
-  };
-
-  init();
-  fetchStats();
-  fetchRecentActivity();
-}, [dispatch]);
+  useEffect(() => {
+    const init = async () => { await dispatch(fetchUser()); setAuthChecked(true); };
+    init();
+    fetchStats();
+    fetchRecentActivity();
+  }, [dispatch]);
 
   const handleUpload = async (files: File[]) => {
     const newEntries: ExtractedFile[] = files.map((file) => ({
       id: `${Date.now()}-${file.name}`,
       fileName: file.name,
-      file: file,
+      file,
       type: user?.role === "admin" ? "po" : "invoice",
       extractedData: undefined,
       status: "extracting",
@@ -133,20 +144,13 @@ useEffect(() => {
 
     for (const entry of newEntries) {
       const file = files.find((f) => f.name === entry.fileName)!;
-
       try {
-        // Step 1: Upload → get file_id
-        const fileId =
-          user?.role === "associate"
-            ? await extractInvoice(file)
-            : await extractPurchaseOrder(file);
+        const fileId = user?.role === "associate" ? await extractInvoice(file) : await extractPurchaseOrder(file);
 
-        // Step 2: Poll until backend finishes
         await pollExtractionStatus(fileId, (status, result, error) => {
           if (status === "completed") {
             const updated: ExtractedFile = { ...entry, extractedData: result, status: "done" };
             dispatch(updateFile(updated));
-            // Keep selectedFile in sync if it's the same one
             setSelectedFile((cur) => cur?.id === entry.id ? updated : cur);
           }
           if (status === "failed") {
@@ -156,7 +160,6 @@ useEffect(() => {
             setToast({ visible: true, message: error ?? "Extraction failed", type: "error" });
           }
         });
-
       } catch (error) {
         const errEntry: ExtractedFile = { ...entry, status: "error" };
         dispatch(updateFile(errEntry));
@@ -166,23 +169,26 @@ useEffect(() => {
     }
   };
 
-  const handleClose = async () => {
-    setSelectedFile(null);
-    setSaveModalOpen(false);
-    await fetchStats();
-    await fetchRecentActivity();
-  };
-
   const handleSave = () => {
     const filesToSave = extractedFiles.filter((f) => f.status === "done" && f.extractedData);
     if (filesToSave.length === 0) return;
-    setSaveModalOpen(true);
+    setUploadsInProgress(true);
+    setProgressModalOpen(true);
+  };
+
+  const handleCloseProgressModal = () => { setProgressModalOpen(false); };
+
+  const handleAllDone = async (allSuccess: boolean) => {
+    setUploadsInProgress(false);
+    setConfirmationFile(null);
+    await fetchStats();
+    await fetchRecentActivity();
   };
 
   if (!authChecked || loading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full"></div>
+        <div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full" />
       </div>
     );
   }
@@ -190,6 +196,7 @@ useEffect(() => {
   if (!user) return <Navigate to="/" />;
 
   const initials = user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase();
+  const canSave = extractedFiles.some((f) => f.status === "done" && f.extractedData) && !extractedFiles.some((f) => f.status === "uploading") && !extractedFiles.some((f) => f.status === "extracting");
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
@@ -202,19 +209,14 @@ useEffect(() => {
             <button onClick={() => setSidebarOpen(true)} className="text-gray-600 hover:text-gray-900 text-xl transition-colors cursor-pointer">☰</button>
             <h1 className="text-lg font-semibold text-gray-800">Dashboard</h1>
           </div>
-          <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold text-sm">
-            {initials}
-          </div>
+          <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold text-sm">{initials}</div>
         </header>
 
-        {/* Main Content */}
         <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
           <p className="text-2xl font-bold text-gray-800">{getGreeting()}, {user.name.split(" ")[0]}</p>
 
           {/* Stat Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {stats.map((stat) => <StatCard key={stat.label} {...stat} />)}
-          </div>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{stats.map((stat) => <StatCard key={stat.label} {...stat} />)}</div>
 
           {/* Upload + Extracted Files */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -229,65 +231,78 @@ useEffect(() => {
 
             {/* Extracted Files List */}
             <div className="bg-white rounded-xl shadow-sm border-t-4 border-t-indigo-500 p-5 flex flex-col h-full">
-              <p className="text-sm font-semibold text-gray-700 mb-3 shrink-0">Extracted Files</p>
+              <div className="flex items-center justify-between mb-3 shrink-0">
+                <p className="text-sm font-semibold text-gray-700">Extracted Files</p>
+
+                {uploadsInProgress && !progressModalOpen && (
+                  <button onClick={() => setProgressModalOpen(true)} className="flex items-center gap-1.5 text-xs text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-full hover:bg-indigo-100 transition-colors font-medium">
+                    <span className="animate-pulse w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" /> Uploading…
+                  </button>
+                )}
+              </div>
 
               {extractedFiles.length === 0 ? (
                 <div className="flex-1 flex items-center justify-center text-sm text-gray-400">No files uploaded yet</div>
               ) : (
                 <>
                   <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2">
-                    {extractedFiles.map((ef) => (
-                      <div key={ef.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-all group
-                          ${selectedFile?.id === ef.id ? "border-indigo-400 bg-indigo-50" : "border-gray-100 hover:border-indigo-300 hover:bg-indigo-50/40"}`}>
-
-                        <button
-                          onClick={() => ef.status === "done" && setSelectedFile(ef)}
-                          disabled={ef.status === "extracting" || ef.status === "uploading"}
-                          className="flex items-center gap-3 flex-1 text-left"
+                    {extractedFiles.map((ef) => {
+                      const isConfirmRequired = ef.status === "confirmation_required";
+                      return (
+                        <div key={ef.id} className={`flex items-start gap-3 p-3 rounded-lg border transition-all group
+                            ${isConfirmRequired ? "border-orange-200 bg-orange-50/60" : selectedFile?.id === ef.id ? "border-indigo-400 bg-indigo-50" : "border-gray-100 hover:border-indigo-300 hover:bg-indigo-50/40"}
+                          `}
                         >
-                          <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm shrink-0">
-                            {ef.fileName.match(/\.(png|jpe?g|webp)$/i) ? "🖼️" : "📄"}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-700 truncate">{ef.fileName}</p>
-                            <p className="text-xs text-gray-400">
-                              {ef.status === "extracting" && (
-                                <span className="flex items-center gap-1 text-amber-500">
-                                  <span className="inline-block animate-spin">⏳</span> Processing…
-                                </span>
-                              )}
-                              {ef.status === "uploading" && (
-                                <span className="flex items-center gap-1 text-blue-500">
-                                  <span className="inline-block animate-pulse">⬆️</span> Uploading…
-                                </span>
-                              )}
-                              {ef.status === "done" && <span className="text-green-600">✅ Ready to view</span>}
-                              {ef.status === "error" && <span className="text-red-500">❌ Failed</span>}
-                            </p>
-                          </div>
-                        </button>
+                          <button onClick={() => ef.status === "done" && setSelectedFile(ef)} disabled={ef.status === "extracting" || ef.status === "uploading" || isConfirmRequired} className="flex items-center gap-3 flex-1 text-left min-w-0">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0 ${isConfirmRequired ? "bg-orange-100 text-orange-500" : "bg-indigo-50 text-indigo-600"}`}>
+                              {ef.fileName.match(/\.(png|jpe?g|webp)$/i) ? "🖼️" : "📄"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-700 truncate">{ef.fileName}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {ef.status === "extracting" && (
+                                  <span className="flex items-center gap-1 text-amber-500">
+                                    <span className="inline-block animate-spin">⏳</span> Processing…
+                                  </span>
+                                )}
+                                {ef.status === "uploading" && (
+                                  <span className="flex items-center gap-1 text-blue-500">
+                                    <span className="animate-pulse">⬆️</span> Uploading…
+                                  </span>
+                                )}
+                                {ef.status === "done"  && <span className="text-green-600">✅ Ready to view</span>}
+                                {ef.status === "error" && <span className="text-red-500">❌ Failed</span>}
+                                {isConfirmRequired && (
+                                  <span className="text-orange-500 font-medium">⚠️ Already exists</span>
+                                )}
+                              </p>
+                            </div>
+                          </button>
 
-                        {/* Only allow removal when not actively extracting */}
-                        {ef.status !== "extracting" && ef.status !== "uploading" && (
-                          <button
-                            onClick={() => {
-                              dispatch(removeFile(ef.id));
-                              if (selectedFile?.id === ef.id) setSelectedFile(null);
-                            }}
-                            className="text-red-400 hover:text-red-600 text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity"
-                          >✕</button>
-                        )}
-                      </div>
-                    ))}
+                          {isConfirmRequired && !progressModalOpen && (
+                            <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
+                              <button onClick={handleConfirmOverride} className="text-xs font-medium px-2.5 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors">Override</button>
+                              <button onClick={handleCancelOverride} className="text-xs font-medium px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">Skip</button>
+                            </div>
+                          )}
+
+                          {!isConfirmRequired && ef.status !== "extracting" && ef.status !== "uploading" && (
+                            <button
+                              onClick={() => {
+                                dispatch(removeFile(ef.id));
+                                if (selectedFile?.id === ef.id) setSelectedFile(null);
+                              }}
+                              className="text-red-400 hover:text-red-600 text-sm font-semibold opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                            >✕</button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <div className="pt-4 mt-3 border-t border-gray-100 shrink-0">
-                    <button
-                      onClick={handleSave}
-                      disabled={!extractedFiles.some((f) => f.status === "done") || extractedFiles.some((f) => f.status === "uploading")}
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium py-2.5 rounded-lg transition-all"
-                    >
-                      Save All Done Files
+                    <button onClick={handleSave} disabled={!canSave} className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white text-sm font-medium py-2.5 rounded-lg transition-all">
+                      {uploadsInProgress ? "Uploads in progress…" : "Save All Done Files"}
                     </button>
                   </div>
                 </>
@@ -310,9 +325,7 @@ useEffect(() => {
                   </tr>
                 </thead>
                 <tbody>
-                  {recentActivity.length === 0 && (
-                    <tr><td colSpan={5} className="text-center p-4 text-gray-400">No activity found</td></tr>
-                  )}
+                  {recentActivity.length === 0 && (<tr><td colSpan={5} className="text-center p-4 text-gray-400">No activity found</td></tr>)}
                   {recentActivity.map((row) => (
                     <tr key={row.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
                       <td className="py-3 font-medium text-gray-700">{row.file}</td>
@@ -331,38 +344,37 @@ useEffect(() => {
 
       {/* Preview Modals */}
       {user.role === "associate" && selectedFile && (
-        <InvoicePreviewModal
-          file={selectedFile}
-          onClose={() => setSelectedFile(null)}
-          onUpdate={(updatedFile) => {
-            dispatch(updateFile(updatedFile));
-            setSelectedFile(updatedFile);
-          }}
-        />
+        <InvoicePreviewModal file={selectedFile} onClose={() => setSelectedFile(null)} onUpdate={(updatedFile) => { dispatch(updateFile(updatedFile)); setSelectedFile(updatedFile); }}/>
       )}
       {user.role === "admin" && selectedFile && (
-        <PurchaseOrderPreviewModal
-          file={selectedFile}
-          onClose={() => setSelectedFile(null)}
-          onUpdate={(updatedFile) => {
-            dispatch(updateFile(updatedFile));
-            setSelectedFile(updatedFile);
-          }}
-        />
+        <PurchaseOrderPreviewModal file={selectedFile} onClose={() => setSelectedFile(null)} onUpdate={(updatedFile) => { dispatch(updateFile(updatedFile)); setSelectedFile(updatedFile); }} />
       )}
-      {saveModalOpen && (
-        <ProgressModal
-          files={extractedFiles.filter((f) => f.status === "done" && f.extractedData)}
-          submitFn={user.role === "associate" ? submitInvoice : submitPurchaseOrder}
-          pollFn={pollUploadStatus}
-          onClose={handleClose}
-          onSuccess={async (msg) => {setToast({ visible: true, message: msg, type: "success" }); await fetchStats(); await fetchRecentActivity();}}
-          onError={(msg) => setToast({ visible: true, message: msg, type: "error" })}
-        />
+
+      {uploadsInProgress && (
+        <div style={{ display: progressModalOpen ? undefined : "none" }}>
+          <ProgressModal
+            files={extractedFiles.filter((f) => f.status === "done" && f.extractedData)}
+            submitFn={user.role === "associate" ? submitInvoice : submitPurchaseOrder}
+            overrideFn={user.role === "associate" ? overrideInvoice : overridePurchaseOrder}
+            pollFn={pollUploadStatus}
+            onClose={handleCloseProgressModal}
+            onSuccess={async (msg) => {
+              setToast({ visible: true, message: msg, type: "success" });
+              await fetchStats();
+              await fetchRecentActivity();
+            }}
+            onError={(msg) => setToast({ visible: true, message: msg, type: "error" })}
+            onConfirmationRequired={handleConfirmationRequired}
+            confirmOverrideRef={confirmOverrideRef}
+            cancelOverrideRef={cancelOverrideRef}
+            onAllDone={handleAllDone}
+          />
+        </div>
       )}
-      {toast.visible && (
-        <Toast message={toast.message} type={toast.type} onClose={() => setToast({ visible: false, message: "", type: "info" })} />
-      )}
+
+      {confirmationFile && progressModalOpen && (<ConfirmationModal open={true} message={`"${confirmationFile.fileName}" already exists.`} onConfirm={handleConfirmOverride} onCancel={handleCancelOverride} />)}
+
+      {toast.visible && (<Toast message={toast.message} type={toast.type} onClose={() => setToast({ visible: false, message: "", type: "info" })} />)}
     </div>
   );
 }
