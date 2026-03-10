@@ -10,11 +10,12 @@ interface NavItem {
   icon: string;
   label: string;
   path?: string;
+  users: string[]
 }
 
 const nav_items: NavItem[] = [
-  { icon: "⊞", label: "Dashboard", path: "/dashboard" },
-  { icon: "☰", label: "All Documents", path: "/documents" },
+  { icon: "⊞", label: "Dashboard", path: "/dashboard", users: ["admin", "associate"] },
+  { icon: "☰", label: "All Documents", path: "/documents", users: ["admin"] },
 ];
 
 function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; user: User & { initials: string }; }) {
@@ -61,12 +62,14 @@ function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; 
 
         {/* Nav */}
         <nav className="flex-1 p-4 flex flex-col gap-2">
-          {nav_items.map((item) => (
-            <button key={item.label} onClick={() => handleNavigation(item.path)} className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 transition-colors cursor-pointer">
-              <span>{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
+          {nav_items
+            .filter(item => item.users.includes(user?.role))
+            .map((item) => (
+              <button key={item.label} onClick={() => handleNavigation(item.path)} className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 transition-colors cursor-pointer">
+                <span>{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
         </nav>
 
         {/* Bottom */}

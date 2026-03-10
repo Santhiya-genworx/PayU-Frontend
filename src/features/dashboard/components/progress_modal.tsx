@@ -14,7 +14,7 @@ interface ProgressModalProps {
   onConfirmationRequired: (file: ExtractedFile) => void;
   confirmOverrideRef: React.MutableRefObject<(() => void) | null>;
   cancelOverrideRef: React.MutableRefObject<(() => void) | null>;
-  onAllDone: (allSuccess: boolean) => void;
+  onAllDone: () => void;
 }
 
 type UploadStatus = "pending" | "uploading" | "success" | "error" | "skipped";
@@ -109,7 +109,7 @@ export default function ProgressModal({files, submitFn, overrideFn, pollFn, onCl
       setDone(true);
       setFileStatuses((prev) => {
         const allSuccess = prev.every((f) => f.status === "success");
-        onAllDone(allSuccess);
+        onAllDone();
         if (allSuccess) dispatch(clearFiles());
         return prev;
       });

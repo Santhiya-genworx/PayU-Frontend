@@ -7,14 +7,16 @@ import Sidebar from "../components/sidebar";
 import UploadBox from "../components/upload_box";
 import InvoicePreviewModal from "../../dashboard/components/invoice_preview";
 import { extractInvoice, extractPurchaseOrder, pollExtractionStatus, getTotalDocuments, getApprovedDocuments, getReviewedDocuments, getRejectedDocuments,
-  submitInvoice, submitPurchaseOrder, pollUploadStatus, getRecentActivity, overrideInvoice, overridePurchaseOrder,} from "../../dashboard/services/dashboardService";
+  submitInvoice, submitPurchaseOrder, pollUploadStatus, getRecentActivity, overrideInvoice, overridePurchaseOrder,
+  createUser,} from "../../dashboard/services/dashboardService";
 import type { ExtractedFile } from "../../../types/process";
 import ProgressModal from "../components/progress_modal";
 import PurchaseOrderPreviewModal from "../components/purchase_order_preview";
 import type { ToastState } from "../../../types/toast";
 import Toast from "../../../components/common/toast";
 import { fetchUser } from "../../auth/slices/authSlice";
-import ConfirmationModal from "../components/confirmation_model";
+import ConfirmationModal from "../components/confirmation_modal";
+import AddUserModal from "../components/create_user_modal";
 
 type DocStatus = "success" | "pending" | "failed";
 type DocType = "Invoice" | "Purchase Order";
@@ -66,7 +68,7 @@ function Dashboard() {
   ]);
   const [selectedFile, setSelectedFile] = useState<ExtractedFile | null>(null);
   const [recentActivity, setRecentActivity] = useState<ActivityRow[]>([]);
-
+  const [addUserOpen, setAddUserOpen] = useState(false);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [uploadsInProgress, setUploadsInProgress] = useState(false);
   const [confirmationFile, setConfirmationFile] = useState<ExtractedFile | null>(null);
@@ -169,6 +171,16 @@ function Dashboard() {
     }
   };
 
+  const handleAddUser = async (data: { name: string; email: string; password: string; role: "associate" | "manager" }) => {
+    
+    try {
+      await createUser(data);
+      setToast({ visible: true, message: `User "${data.name}" added successfully!`, type: "success" });
+    } catch (error) {
+      setToast({ visible: true, message: `Adding user failed!`, type: "error" });
+    }
+  };
+
   const handleSave = () => {
     const filesToSave = extractedFiles.filter((f) => f.status === "done" && f.extractedData);
     if (filesToSave.length === 0) return;
@@ -178,7 +190,7 @@ function Dashboard() {
 
   const handleCloseProgressModal = () => { setProgressModalOpen(false); };
 
-  const handleAllDone = async (allSuccess: boolean) => {
+  const handleAllDone = async () => {
     setUploadsInProgress(false);
     setConfirmationFile(null);
     await fetchStats();
@@ -209,7 +221,20 @@ function Dashboard() {
             <button onClick={() => setSidebarOpen(true)} className="text-gray-600 hover:text-gray-900 text-xl transition-colors cursor-pointer">☰</button>
             <h1 className="text-lg font-semibold text-gray-800">Dashboard</h1>
           </div>
-          <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold text-sm">{initials}</div>
+          <div className="flex flex-row items-center gap-4">
+            {user.role === "admin" && (
+                <button onClick={() => setAddUserOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-lg border  text-sm font-medium transition-colors shadow-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <line x1="19" y1="8" x2="19" y2="14" />
+                    <line x1="16" y1="11" x2="22" y2="11" />
+                  </svg>
+                  Add User
+                </button>
+              )}
+            <div className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-semibold text-sm">{initials}</div>
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto p-6 flex flex-col gap-6">
@@ -373,6 +398,12 @@ function Dashboard() {
       )}
 
       {confirmationFile && progressModalOpen && (<ConfirmationModal open={true} message={`"${confirmationFile.fileName}" already exists.`} onConfirm={handleConfirmOverride} onCancel={handleCancelOverride} />)}
+
+      <AddUserModal
+        open={addUserOpen}
+        onClose={() => setAddUserOpen(false)}
+        onSubmit={handleAddUser}
+      />
 
       {toast.visible && (<Toast message={toast.message} type={toast.type} onClose={() => setToast({ visible: false, message: "", type: "info" })} />)}
     </div>
