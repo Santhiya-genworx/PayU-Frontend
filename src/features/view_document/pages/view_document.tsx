@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getDocumentStats, getInvoices, getPurchaseOrders } from "../services/documentService";
+import { filterInvoices, filterPurchaseOrders, getDocumentStats } from "../services/documentService";
 import Sidebar from "../../dashboard/components/sidebar";
 import { useDispatch, useSelector } from "react-redux";
 import { type AppDispatch, type RootState } from "../../../app/store";
@@ -10,6 +10,7 @@ import { fetchUser } from "../../auth/slices/authSlice";
 import SummaryBar from "../components/summary_bar";
 import FileViewer from "../components/file_viewer";
 import VendorBlock from "../components/vendor_block";
+import HistoryShower from "../components/history_shower";
 
 type DocStatus = "approved" | "pending" | "rejected";
 type ActiveDocTab = "Invoice" | "Purchase Order";
@@ -56,6 +57,26 @@ function FilterBar({ search, setSearch, placeholder }: {search: string; setSearc
           className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white" />
       </div>
     </div>
+  );
+}
+
+function HistoryButton({ onClick, color }: { onClick: () => void; color: "blue" | "violet" }) {
+  const cls = color === "blue"
+    ? "border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300"
+    : "border-violet-200 text-violet-600 hover:bg-violet-50 hover:border-violet-300";
+  return (
+    <button
+      onClick={onClick}
+      title="View upload history"
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${cls}`}
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 3v5h5"/>
+        <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
+        <path d="M12 7v5l4 2"/>
+      </svg>
+      History
+    </button>
   );
 }
 
@@ -115,7 +136,7 @@ function InvoiceTable({ invoices, selected, onSelect, loading }: {invoices: Invo
   );
 }
 
-function InvoiceDetailPanel({ inv, onClose }: { inv: InvoiceData; onClose: () => void }) {
+function InvoiceDetailPanel({ inv, onClose, onOpenHistory }: { inv: InvoiceData; onClose: () => void; onOpenHistory: () => void }) {
   const [tab, setTab] = useState<InvoiceDetailTab>("details");
   useEffect(() => { setTab("details"); }, [inv.invoice_id]);
 
@@ -132,6 +153,7 @@ function InvoiceDetailPanel({ inv, onClose }: { inv: InvoiceData; onClose: () =>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <StatusBadge status="pending" />
+           <HistoryButton onClick={onOpenHistory} color="blue" />
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none ml-1">✕</button>
         </div>
       </div>
@@ -255,7 +277,7 @@ function POTable({ pos, selected, onSelect, loading }: {pos: POData[]; selected:
   );
 }
 
-function PODetailPanel({ po, onClose }: { po: POData; onClose: () => void }) {
+function PODetailPanel({ po, onClose, onOpenHistory }: { po: POData; onClose: () => void; onOpenHistory: () => void }) {
   const [tab, setTab] = useState<PODetailTab>("details");
   useEffect(() => { setTab("details"); }, [po.po_id]);
 
@@ -272,6 +294,7 @@ function PODetailPanel({ po, onClose }: { po: POData; onClose: () => void }) {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <StatusBadge status="pending" />
+          <HistoryButton onClick={onOpenHistory} color="violet" />
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-lg leading-none ml-1">✕</button>
         </div>
       </div>
@@ -322,7 +345,7 @@ function PODetailPanel({ po, onClose }: { po: POData; onClose: () => void }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {(po.ordered_items ?? []).map((item: any, i: number) => (
+                    {(po.order_items ?? []).map((item: any, i: number) => (
                       <tr key={i} className="border-t border-gray-50">
                         <td className="px-3 py-2 text-gray-700">{item.item_description}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{item.quantity}</td>
@@ -345,11 +368,6 @@ function PODetailPanel({ po, onClose }: { po: POData; onClose: () => void }) {
         {tab === "file" && (<FileViewer fileUrl={(po as any).fileUrl} id={po.po_id} vendor={po.vendor.name} date={po.ordered_date}/>)}
       </div>
 
-      {/* Footer */}
-      <div className="px-5 py-4 border-t border-gray-100 flex gap-2 shrink-0">
-        <button className="flex-1 bg-green-600 hover:bg-green-700 text-white text-sm font-medium py-2.5 rounded-lg transition-colors">✅ Approve</button>
-        <button className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-medium py-2.5 rounded-lg transition-colors">✕ Reject</button>
-      </div>
     </div>
   );
 }
@@ -374,6 +392,13 @@ function ViewDocuments() {
     invoice_value: 0,
     po_value: 0
   });
+   const [historyDrawer, setHistoryDrawer] = useState<{
+    open: boolean;
+    docType: "invoice" | "po";
+    docId: string;
+    vendorName: string;
+  }>({ open: false, docType: "invoice", docId: "", vendorName: "" });
+
 
   const user = useSelector((state: RootState) => state.auth.user);
 
@@ -383,11 +408,9 @@ function ViewDocuments() {
       setAuthChecked(true);
     };
 
-    init();
-
-    (async () => {
+    const fetchInitialData = async () => {
       try {
-        const [inv_data, po_data, stat_data] = await Promise.all([getInvoices(), getPurchaseOrders(), getDocumentStats()]);
+        const [inv_data, po_data, stat_data] = await Promise.all([filterInvoices(), filterPurchaseOrders(), getDocumentStats()]);
 
         setInvoices(inv_data);
         setPos(po_data);
@@ -399,9 +422,43 @@ function ViewDocuments() {
         setLoadingInvoices(false);
         setLoadingPos(false);
       }
-    })();
+    };
+
+    init();
+    fetchInitialData();
 
   }, [dispatch]);
+
+  useEffect(() => {
+
+    const delay = setTimeout(async () => {
+
+      try {
+        if (activeTab === "Invoice") {
+          setLoadingInvoices(true);
+          const data = await filterInvoices(invSearch);
+          setInvoices(data);
+          setSelectedInv(null);
+          setLoadingInvoices(false);
+        }
+
+        if (activeTab === "Purchase Order") {
+          setLoadingPos(true);
+          const data = await filterPurchaseOrders(poSearch);
+          setPos(data);
+          setSelectedPo(null);  
+          setLoadingPos(false);
+        }
+
+      } catch (e) {
+        console.error("Search failed:", e);
+      }
+
+    }, 400);
+
+    return () => clearTimeout(delay);
+
+  }, [invSearch, poSearch, activeTab]);
 
   if (!authChecked || loading) {
     return (
@@ -414,19 +471,19 @@ function ViewDocuments() {
 
   const initials = user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase() ?? "";
 
-  const filteredInvoices = invoices.filter(d => {
-    const q = invSearch.toLowerCase();
-    return !q || d.invoice_id.toLowerCase().includes(q) || d.vendor.name.toLowerCase().includes(q) || (d.po_id ?? "").toLowerCase().includes(q);});
-
-  const filteredPos = pos.filter(d => {
-    const q = poSearch.toLowerCase();
-    return !q || d.po_id.toLowerCase().includes(q) || d.vendor.name.toLowerCase().includes(q) || (d.gl_code ?? "").toLowerCase().includes(q); });
-
   const handleTabChange = (tab: ActiveDocTab) => {
     setActiveTab(tab);
     setSelectedInv(null);
     setSelectedPo(null);
   };
+
+  const openInvHistory = (inv: InvoiceData) =>
+    setHistoryDrawer({ open: true, docType: "invoice", docId: inv.invoice_id, vendorName: inv.vendor.name });
+
+  const openPoHistory = (po: POData) =>
+    setHistoryDrawer({ open: true, docType: "po", docId: po.po_id, vendorName: po.vendor.name });
+
+  const closeHistory = () => setHistoryDrawer(h => ({ ...h, open: false }));
 
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden">
@@ -458,7 +515,8 @@ function ViewDocuments() {
           <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
 
             {/* Table Card */}
-            <div className={`flex flex-col bg-white rounded-xl shadow-sm overflow-hidden flex-1 min-w-0 border-t-4 transition-colors ${activeTab === "Invoice" ? "border-t-blue-600" : "border-t-violet-600"}`}>
+            <div className={`flex flex-col bg-white rounded-xl shadow-sm overflow-hidden min-w-0 border-t-4 transition-colors ${activeTab === "Invoice" ? "border-t-blue-600" : "border-t-violet-600"}
+              ${(activeTab === "Invoice" && selectedInv) || (activeTab === "Purchase Order" && selectedPo) ? "flex-[1_1_0%]" : "flex-1"}`}>
 
               {/* Tab switcher */}
               <div className="flex border-b border-gray-100 px-2 shrink-0">
@@ -473,46 +531,53 @@ function ViewDocuments() {
 
               {/* Results count */}
               {activeTab === "Invoice" && !loadingInvoices && (
-                <div className="px-5 py-2 shrink-0 border-b border-gray-50">
+                <div className="px-3 py-2 shrink-0 border-b border-gray-50">
                   <p className="text-xs text-gray-400">
-                    Showing <span className="font-medium text-gray-600">{filteredInvoices.length}</span> of{" "}
+                    Showing <span className="font-medium text-gray-600">{invoices.length}</span> of{" "}
                     <span className="font-medium text-gray-600">{invoices.length}</span> invoices
                   </p>
                 </div>
               )}
               {activeTab === "Purchase Order" && !loadingPos && (
-                <div className="px-5 py-2 shrink-0 border-b border-gray-50">
+                <div className="px-3 py-2 shrink-0 border-b border-gray-50">
                   <p className="text-xs text-gray-400">
-                    Showing <span className="font-medium text-gray-600">{filteredPos.length}</span> of{" "}
+                    Showing <span className="font-medium text-gray-600">{pos.length}</span> of{" "}
                     <span className="font-medium text-gray-600">{pos.length}</span> purchase orders
                   </p>
                 </div>
               )}
 
               <div className={`flex-1 flex flex-col min-h-0 ${activeTab === "Invoice" ? "" : "hidden"}`}>
-                <InvoiceTable invoices={filteredInvoices} selected={selectedInv} onSelect={inv => setSelectedInv(s => s?.invoice_id === inv.invoice_id ? null : inv)} loading={loadingInvoices} />
+                <InvoiceTable invoices={invoices} selected={selectedInv} onSelect={inv => setSelectedInv(s => s?.invoice_id === inv.invoice_id ? null : inv)} loading={loadingInvoices} />
               </div>
               <div className={`flex-1 flex flex-col min-h-0 ${activeTab === "Purchase Order" ? "" : "hidden"}`}>
-                <POTable pos={filteredPos} selected={selectedPo} onSelect={po => setSelectedPo(s => s?.po_id === po.po_id ? null : po)} loading={loadingPos} />
+                <POTable pos={pos} selected={selectedPo} onSelect={po => setSelectedPo(s => s?.po_id === po.po_id ? null : po)} loading={loadingPos} />
               </div>
             </div>
 
             {/* Invoice Detail Panel */}
             {activeTab === "Invoice" && selectedInv && (
-              <div className="w-105 shrink-0 flex flex-col overflow-hidden">
-                <InvoiceDetailPanel inv={selectedInv} onClose={() => setSelectedInv(null)} />
+              <div className="w-125 shrink-0 flex flex-col overflow-hidden">
+                <InvoiceDetailPanel inv={selectedInv} onClose={() => setSelectedInv(null)} onOpenHistory={() => openInvHistory(selectedInv)} />
               </div>
             )}
 
             {/* PO Detail Panel */}
             {activeTab === "Purchase Order" && selectedPo && (
-              <div className="w-105 shrink-0 flex flex-col overflow-hidden">
-                <PODetailPanel po={selectedPo} onClose={() => setSelectedPo(null)} />
+              <div className="w-125 shrink-0 flex flex-col overflow-hidden">
+                <PODetailPanel po={selectedPo} onClose={() => setSelectedPo(null)} onOpenHistory={() => openPoHistory(selectedPo)} />
               </div>
             )}
           </div>
         </main>
       </div>
+      <HistoryShower
+        open={historyDrawer.open}
+        onClose={closeHistory}
+        docType={historyDrawer.docType}
+        docId={historyDrawer.docId}
+        vendorName={historyDrawer.vendorName}
+      />
     </div>
   );
 }

@@ -2,6 +2,11 @@ import api from "../../../lib/axios";
 import type { InvoiceData } from "../../../types/invoice";
 import type { POData } from "../../../types/purchase_order";
 
+export const createUser = async (data: { name: string; email: string; password: string; role: "associate" | "manager" }) => {
+  const response =  await api.post("/auth/users/create", data, { withCredentials: true })
+  return response.data;
+}
+
 export const extractInvoice = async (file: File): Promise<string> => {
   const formData = new FormData();
   formData.append("file", file);
