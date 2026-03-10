@@ -12,7 +12,7 @@ interface NavItem {
   path?: string;
 }
 
-const NAV_ITEMS: NavItem[] = [
+const nav_items: NavItem[] = [
   { icon: "⊞", label: "Dashboard", path: "/dashboard" },
   { icon: "☰", label: "All Documents", path: "/documents" },
 ];
@@ -61,7 +61,7 @@ function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; 
 
         {/* Nav */}
         <nav className="flex-1 p-4 flex flex-col gap-2">
-          {NAV_ITEMS.map((item) => (
+          {nav_items.map((item) => (
             <button key={item.label} onClick={() => handleNavigation(item.path)} className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 transition-colors cursor-pointer">
               <span>{item.icon}</span>
               {item.label}

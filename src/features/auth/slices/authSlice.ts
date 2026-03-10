@@ -2,7 +2,6 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { getProfile, login as loginService, logout as logoutService } from "../services/authService";
 import type { User } from "../../../types/user";
 
-// Fetch current user
 export const fetchUser = createAsyncThunk<User>(
   "auth/fetchUser",
   async (_, { rejectWithValue }) => {
@@ -15,7 +14,6 @@ export const fetchUser = createAsyncThunk<User>(
   }
 );
 
-// Login
 export const login = createAsyncThunk<User,{ email: string; password: string }>("auth/login", async (credentials, { rejectWithValue }) => {
   try {
     const response = await loginService(credentials);
@@ -27,7 +25,6 @@ export const login = createAsyncThunk<User,{ email: string; password: string }>(
   }
 });
 
-// Logout
 export const logout = createAsyncThunk(
   "auth/logout",
   async (_, { rejectWithValue }) => {

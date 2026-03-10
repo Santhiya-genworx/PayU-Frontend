@@ -9,10 +9,12 @@ import type { POData } from "../../../types/purchase_order";
 import { fetchUser } from "../../auth/slices/authSlice";
 import SummaryBar from "../components/summary_bar";
 import FileViewer from "../components/file_viewer";
-
-// ─── Shared Helpers ───────────────────────────────────────────────────────────
+import VendorBlock from "../components/vendor_block";
 
 type DocStatus = "approved" | "pending" | "rejected";
+type ActiveDocTab = "Invoice" | "Purchase Order";
+type InvoiceDetailTab = "details" | "vendor" | "file";
+type PODetailTab = "details" | "vendor" | "file";
 
 const STATUS_CONFIG: Record<DocStatus, { pill: string; dot: string; label: string }> = {
   approved: { pill: "bg-green-100 text-green-700", dot: "bg-green-500", label: "Approved" },
@@ -35,42 +37,27 @@ function StatusBadge({ status }: { status: DocStatus }) {
   );
 }
 
-type ActiveDocTab = "Invoice" | "Purchase Order";
-
-function DocTypeTab({ label, icon, count, active, accentActive, onClick }: {
-  label: string; icon: string; count: number; active: boolean;
-  accentActive: string; onClick: () => void;
-}) {
+function DocTypeTab({ label, icon, count, active, accentActive, onClick }: {label: string; icon: string; count: number; active: boolean; accentActive: string; onClick: () => void;}) {
   return (
-    <button onClick={onClick}
-      className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap
-        ${active ? accentActive : "border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}>
+    <button onClick={onClick} className={`flex items-center gap-2 px-5 py-3 text-sm font-medium border-b-2 transition-all whitespace-nowrap ${active ? accentActive : "border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}>
       <span>{icon}</span>
       <span>{label}</span>
-      <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold transition-colors
-        ${active ? "bg-white/70 text-current" : "bg-gray-100 text-gray-500"}`}>
-        {count}
-      </span>
+      <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold transition-colors ${active ? "bg-white/70 text-current" : "bg-gray-100 text-gray-500"}`}>{count}</span>
     </button>
   );
 }
 
-function FilterBar({ search, setSearch, placeholder }: {
-  search: string; setSearch: (s: string) => void; placeholder?: string;
-}) {
+function FilterBar({ search, setSearch, placeholder }: {search: string; setSearch: (s: string) => void; placeholder?: string;}) {
   return (
     <div className="flex flex-wrap gap-3 items-center">
       <div className="relative flex-1 min-w-45">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
-        <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-          placeholder={placeholder ?? "Search…"}
+        <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder={placeholder ?? "Search…"}
           className="w-full pl-9 pr-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white" />
       </div>
     </div>
   );
 }
-
-// ─── Loading Spinner ──────────────────────────────────────────────────────────
 
 function Spinner() {
   return (
@@ -83,44 +70,7 @@ function Spinner() {
   );
 }
 
-// ─── Vendor Block ─────────────────────────────────────────────────────────────
-
-function VendorBlock({ vendor }: { vendor: InvoiceData["vendor"] }) {
-  const rows: { label: string; value: string; full?: boolean }[] = [
-    { label: "Name",           value: vendor.name },
-    { label: "Email",          value: vendor.email },
-    { label: "Mobile",         value: vendor.mobile_number },
-    { label: "GST No.",        value: vendor.gst_number },
-    { label: "Country",        value: vendor.country_code },
-    { label: "Bank",           value: vendor.bank_name },
-    { label: "Account Holder", value: vendor.account_holder_name },
-    { label: "Account No.",    value: vendor.account_number },
-    { label: "IFSC",           value: vendor.ifsc_code },
-    { label: "Address",        value: vendor.address, full: true },
-  ];
-  return (
-    <div>
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Vendor Info</p>
-      <div className="grid grid-cols-2 gap-y-3 gap-x-4">
-        {rows.map(r => (
-          <div key={r.label} className={r.full ? "col-span-2" : ""}>
-            <p className="text-xs text-gray-400">{r.label}</p>
-            <p className="text-sm font-medium text-gray-800 wrap-break-word">{r.value || "—"}</p>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// ── INVOICE ───────────────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function InvoiceTable({ invoices, selected, onSelect, loading }: {
-  invoices: InvoiceData[]; selected: InvoiceData | null;
-  onSelect: (inv: InvoiceData) => void; loading: boolean;
-}) {
+function InvoiceTable({ invoices, selected, onSelect, loading }: {invoices: InvoiceData[]; selected: InvoiceData | null; onSelect: (inv: InvoiceData) => void; loading: boolean;}) {
   if (loading) return <Spinner />;
   return (
     <div className="flex-1 overflow-y-auto">
@@ -165,8 +115,6 @@ function InvoiceTable({ invoices, selected, onSelect, loading }: {
   );
 }
 
-type InvoiceDetailTab = "details" | "vendor" | "file";
-
 function InvoiceDetailPanel({ inv, onClose }: { inv: InvoiceData; onClose: () => void }) {
   const [tab, setTab] = useState<InvoiceDetailTab>("details");
   useEffect(() => { setTab("details"); }, [inv.invoice_id]);
@@ -191,9 +139,7 @@ function InvoiceDetailPanel({ inv, onClose }: { inv: InvoiceData; onClose: () =>
       {/* Tabs */}
       <div className="flex border-b border-gray-100 px-5 gap-4 shrink-0">
         {(["details", "vendor", "file"] as InvoiceDetailTab[]).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
-              ${tab === t ? "border-blue-500 text-blue-600" : "border-transparent text-gray-400 hover:text-gray-600"}`}>
+          <button key={t} onClick={() => setTab(t)} className={`py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${tab === t ? "border-blue-500 text-blue-600" : "border-transparent text-gray-400 hover:text-gray-600"}`}>
             {t === "details" ? "📄 Details" : t === "vendor" ? "🏢 Vendor" : "🖼️ File"}
           </button>
         ))}
@@ -208,11 +154,11 @@ function InvoiceDetailPanel({ inv, onClose }: { inv: InvoiceData; onClose: () =>
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Invoice Info</p>
               <div className="grid grid-cols-2 gap-y-3 gap-x-4">
                 {[
-                  { label: "Invoice ID",   value: inv.invoice_id },
+                  { label: "Invoice ID",value: inv.invoice_id },
                   { label: "PO Reference", value: inv.po_id || "—" },
                   { label: "Invoice Date", value: inv.invoice_date },
-                  { label: "Due Date",     value: inv.due_date },
-                  { label: "Currency",     value: inv.currency_code },
+                  { label: "Due Date", value: inv.due_date },
+                  { label: "Currency", value: inv.currency_code },
                 ].map(f => (
                   <div key={f.label}>
                     <p className="text-xs text-gray-400">{f.label}</p>
@@ -258,31 +204,15 @@ function InvoiceDetailPanel({ inv, onClose }: { inv: InvoiceData; onClose: () =>
             </div>
           </div>
         )}
-        {tab === "vendor" && (
-          <div className="px-5 py-4"><VendorBlock vendor={inv.vendor} /></div>
-        )}
-        {tab === "file" && (
-          <FileViewer
-  fileUrl={inv.file_url??""}
-  id={inv.invoice_id}
-  vendor={inv.vendor.name}
-  date={inv.invoice_date}
-/>
-        )}
+        {tab === "vendor" && (<div className="px-5 py-4"><VendorBlock vendor={inv.vendor} /></div>)}
+        {tab === "file" && (<FileViewer fileUrl={inv.file_url??""} id={inv.invoice_id} vendor={inv.vendor.name} date={inv.invoice_date}/>)}
       </div>
 
     </div>
   );
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ── PURCHASE ORDER ────────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function POTable({ pos, selected, onSelect, loading }: {
-  pos: POData[]; selected: POData | null;
-  onSelect: (po: POData) => void; loading: boolean;
-}) {
+function POTable({ pos, selected, onSelect, loading }: {pos: POData[]; selected: POData | null; onSelect: (po: POData) => void; loading: boolean;}) {
   if (loading) return <Spinner />;
   return (
     <div className="flex-1 overflow-y-auto">
@@ -302,9 +232,7 @@ function POTable({ pos, selected, onSelect, loading }: {
             <tr><td colSpan={6} className="text-center py-16 text-gray-400 text-sm">No purchase orders found</td></tr>
           )}
           {pos.map(po => (
-            <tr key={po.po_id} onClick={() => onSelect(po)}
-              className={`border-b border-gray-50 last:border-0 cursor-pointer transition-colors
-                ${selected?.po_id === po.po_id ? "bg-violet-50" : "hover:bg-gray-50"}`}>
+            <tr key={po.po_id} onClick={() => onSelect(po)} className={`border-b border-gray-50 last:border-0 cursor-pointer transition-colors ${selected?.po_id === po.po_id ? "bg-violet-50" : "hover:bg-gray-50"}`}>
               <td className="py-3 px-4">
                 <div className="flex items-center gap-2">
                   <span className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0 bg-violet-50 text-violet-600">📋</span>
@@ -326,8 +254,6 @@ function POTable({ pos, selected, onSelect, loading }: {
     </div>
   );
 }
-
-type PODetailTab = "details" | "vendor" | "file";
 
 function PODetailPanel({ po, onClose }: { po: POData; onClose: () => void }) {
   const [tab, setTab] = useState<PODetailTab>("details");
@@ -353,9 +279,7 @@ function PODetailPanel({ po, onClose }: { po: POData; onClose: () => void }) {
       {/* Tabs */}
       <div className="flex border-b border-gray-100 px-5 gap-4 shrink-0">
         {(["details", "vendor", "file"] as PODetailTab[]).map(t => (
-          <button key={t} onClick={() => setTab(t)}
-            className={`py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
-              ${tab === t ? "border-violet-500 text-violet-600" : "border-transparent text-gray-400 hover:text-gray-600"}`}>
+          <button key={t} onClick={() => setTab(t)} className={`py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${tab === t ? "border-violet-500 text-violet-600" : "border-transparent text-gray-400 hover:text-gray-600"}`}>
             {t === "details" ? "📄 Details" : t === "vendor" ? "🏢 Vendor" : "🖼️ File"}
           </button>
         ))}
@@ -370,10 +294,10 @@ function PODetailPanel({ po, onClose }: { po: POData; onClose: () => void }) {
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">PO Info</p>
               <div className="grid grid-cols-2 gap-y-3 gap-x-4">
                 {[
-                  { label: "PO ID",        value: po.po_id },
-                  { label: "GL Code",      value: po.gl_code || "—" },
+                  { label: "PO ID", value: po.po_id },
+                  { label: "GL Code", value: po.gl_code || "—" },
                   { label: "Ordered Date", value: po.ordered_date },
-                  { label: "Currency",     value: po.currency_code },
+                  { label: "Currency", value: po.currency_code },
                   { label: "Total Amount", value: fmt(po.total_amount, po.currency_code) },
                 ].map(f => (
                   <div key={f.label}>
@@ -417,17 +341,8 @@ function PODetailPanel({ po, onClose }: { po: POData; onClose: () => void }) {
             </div>
           </div>
         )}
-        {tab === "vendor" && (
-          <div className="px-5 py-4"><VendorBlock vendor={po.vendor} /></div>
-        )}
-        {tab === "file" && (
-          <FileViewer
-            fileUrl={(po as any).fileUrl}
-            id={po.po_id}
-            vendor={po.vendor.name}
-            date={po.ordered_date}
-          />
-        )}
+        {tab === "vendor" && (<div className="px-5 py-4"><VendorBlock vendor={po.vendor} /></div>)}
+        {tab === "file" && (<FileViewer fileUrl={(po as any).fileUrl} id={po.po_id} vendor={po.vendor.name} date={po.ordered_date}/>)}
       </div>
 
       {/* Footer */}
@@ -439,64 +354,54 @@ function PODetailPanel({ po, onClose }: { po: POData; onClose: () => void }) {
   );
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// ── PAGE ──────────────────────────────────────────────────────────────────────
-// ═══════════════════════════════════════════════════════════════════════════════
-
-export default function ViewDocuments() {
-  const [invoices, setInvoices]               = useState<InvoiceData[]>([]);
-  const [pos, setPos]                         = useState<POData[]>([]);
+function ViewDocuments() {
+  const [invoices, setInvoices] = useState<InvoiceData[]>([]);
+  const [pos, setPos] = useState<POData[]>([]);
   const [loadingInvoices, setLoadingInvoices] = useState(true);
-  const [loadingPos, setLoadingPos]           = useState(false);
-  const [activeTab, setActiveTab]             = useState<ActiveDocTab>("Invoice");
-  const [invSearch, setInvSearch]             = useState("");
-  const [poSearch, setPoSearch]               = useState("");
-  const [selectedInv, setSelectedInv]         = useState<InvoiceData | null>(null);
-  const [selectedPo, setSelectedPo]           = useState<POData | null>(null);
-  const [sidebarOpen, setSidebarOpen]         = useState(false);
+  const [loadingPos, setLoadingPos] = useState(false);
+  const [activeTab, setActiveTab] = useState<ActiveDocTab>("Invoice");
+  const [invSearch, setInvSearch] = useState("");
+  const [poSearch, setPoSearch] = useState("");
+  const [selectedInv, setSelectedInv] = useState<InvoiceData | null>(null);
+  const [selectedPo, setSelectedPo] = useState<POData | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const dispatch = useDispatch<AppDispatch>();
   const loading = useSelector((state: RootState) => state.auth.loading);
   const [stats, setStats] = useState({
-  total_invoices: 0,
-  total_pos: 0,
-  invoice_value: 0,
-  po_value: 0
-});
+    total_invoices: 0,
+    total_pos: 0,
+    invoice_value: 0,
+    po_value: 0
+  });
 
   const user = useSelector((state: RootState) => state.auth.user);
 
-  // Fetch invoices on mount
-useEffect(() => {
-  const init = async () => {
-    await dispatch(fetchUser());
-    setAuthChecked(true);
-  };
+  useEffect(() => {
+    const init = async () => {
+      await dispatch(fetchUser());
+      setAuthChecked(true);
+    };
 
-  init();
+    init();
 
-  (async () => {
-    try {
-      const [inv_data, po_data, stat_data] = await Promise.all([
-        getInvoices(),
-        getPurchaseOrders(),
-        getDocumentStats()
-      ]);
+    (async () => {
+      try {
+        const [inv_data, po_data, stat_data] = await Promise.all([getInvoices(), getPurchaseOrders(), getDocumentStats()]);
 
-      setInvoices(inv_data);
-      setPos(po_data);
-      setStats(stat_data);
+        setInvoices(inv_data);
+        setPos(po_data);
+        setStats(stat_data);
 
-    } catch (e) {
-      console.error("Failed to fetch data:", e);
-    } finally {
-      setLoadingInvoices(false);
-      setLoadingPos(false);
-    }
-  })();
+      } catch (e) {
+        console.error("Failed to fetch data:", e);
+      } finally {
+        setLoadingInvoices(false);
+        setLoadingPos(false);
+      }
+    })();
 
-}, [dispatch]);
+  }, [dispatch]);
 
   if (!authChecked || loading) {
     return (
@@ -511,17 +416,11 @@ useEffect(() => {
 
   const filteredInvoices = invoices.filter(d => {
     const q = invSearch.toLowerCase();
-    return !q || d.invoice_id.toLowerCase().includes(q)
-              || d.vendor.name.toLowerCase().includes(q)
-              || (d.po_id ?? "").toLowerCase().includes(q);
-  });
+    return !q || d.invoice_id.toLowerCase().includes(q) || d.vendor.name.toLowerCase().includes(q) || (d.po_id ?? "").toLowerCase().includes(q);});
 
   const filteredPos = pos.filter(d => {
     const q = poSearch.toLowerCase();
-    return !q || d.po_id.toLowerCase().includes(q)
-              || d.vendor.name.toLowerCase().includes(q)
-              || (d.gl_code ?? "").toLowerCase().includes(q);
-  });
+    return !q || d.po_id.toLowerCase().includes(q) || d.vendor.name.toLowerCase().includes(q) || (d.gl_code ?? "").toLowerCase().includes(q); });
 
   const handleTabChange = (tab: ActiveDocTab) => {
     setActiveTab(tab);
@@ -559,28 +458,17 @@ useEffect(() => {
           <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
 
             {/* Table Card */}
-            <div className={`flex flex-col bg-white rounded-xl shadow-sm overflow-hidden flex-1 min-w-0 border-t-4 transition-colors ${
-              activeTab === "Invoice" ? "border-t-blue-600" : "border-t-violet-600"
-            }`}>
+            <div className={`flex flex-col bg-white rounded-xl shadow-sm overflow-hidden flex-1 min-w-0 border-t-4 transition-colors ${activeTab === "Invoice" ? "border-t-blue-600" : "border-t-violet-600"}`}>
 
               {/* Tab switcher */}
               <div className="flex border-b border-gray-100 px-2 shrink-0">
-                <DocTypeTab label="Invoices" icon="🧾" count={invoices.length}
-                  active={activeTab === "Invoice"}
-                  accentActive="border-blue-600 text-blue-700 bg-blue-50/40"
-                  onClick={() => handleTabChange("Invoice")} />
-                <DocTypeTab label="Purchase Orders" icon="📋" count={pos.length}
-                  active={activeTab === "Purchase Order"}
-                  accentActive="border-violet-600 text-violet-700 bg-violet-50/40"
-                  onClick={() => handleTabChange("Purchase Order")} />
+                <DocTypeTab label="Invoices" icon="🧾" count={invoices.length} active={activeTab === "Invoice"} accentActive="border-blue-600 text-blue-700 bg-blue-50/40" onClick={() => handleTabChange("Invoice")} />
+                <DocTypeTab label="Purchase Orders" icon="📋" count={pos.length} active={activeTab === "Purchase Order"} accentActive="border-violet-600 text-violet-700 bg-violet-50/40" onClick={() => handleTabChange("Purchase Order")} />
               </div>
 
               {/* Search */}
               <div className="px-5 py-3 border-b border-gray-100 shrink-0">
-                {activeTab === "Invoice"
-                  ? <FilterBar search={invSearch} setSearch={setInvSearch} placeholder="Search by invoice ID, vendor, PO ref…" />
-                  : <FilterBar search={poSearch} setSearch={setPoSearch} placeholder="Search by PO ID, vendor, GL code…" />
-                }
+                {activeTab === "Invoice" ? <FilterBar search={invSearch} setSearch={setInvSearch} placeholder="Search by invoice ID, vendor, PO ref…" /> : <FilterBar search={poSearch} setSearch={setPoSearch} placeholder="Search by PO ID, vendor, GL code…" />}
               </div>
 
               {/* Results count */}
@@ -601,16 +489,11 @@ useEffect(() => {
                 </div>
               )}
 
-              {/* Tables — kept mounted to preserve scroll state, shown/hidden via CSS */}
               <div className={`flex-1 flex flex-col min-h-0 ${activeTab === "Invoice" ? "" : "hidden"}`}>
-                <InvoiceTable invoices={filteredInvoices} selected={selectedInv}
-                  onSelect={inv => setSelectedInv(s => s?.invoice_id === inv.invoice_id ? null : inv)}
-                  loading={loadingInvoices} />
+                <InvoiceTable invoices={filteredInvoices} selected={selectedInv} onSelect={inv => setSelectedInv(s => s?.invoice_id === inv.invoice_id ? null : inv)} loading={loadingInvoices} />
               </div>
               <div className={`flex-1 flex flex-col min-h-0 ${activeTab === "Purchase Order" ? "" : "hidden"}`}>
-                <POTable pos={filteredPos} selected={selectedPo}
-                  onSelect={po => setSelectedPo(s => s?.po_id === po.po_id ? null : po)}
-                  loading={loadingPos} />
+                <POTable pos={filteredPos} selected={selectedPo} onSelect={po => setSelectedPo(s => s?.po_id === po.po_id ? null : po)} loading={loadingPos} />
               </div>
             </div>
 
@@ -633,3 +516,5 @@ useEffect(() => {
     </div>
   );
 }
+
+export default ViewDocuments;

@@ -1,30 +1,15 @@
 
 import { useState, useEffect } from "react";
-import type { ExtractedFile } from "../../../types/process";
+import type { ExtractedFile, FiledProps } from "../../../types/process";
 import type { InvoiceData, InvoiceItem } from "../../../types/invoice";
 
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-}: {
-  label: string;
-  value: string | number;
-  onChange: (val: string) => void;
-  type?: string;
-}) {
+
+
+function Field({ label, value, onChange, type = "text"}: FiledProps) {
   return (
     <div className="flex flex-col gap-0.5">
-      <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-        {label}
-      </label>
-      <input
-        type={type}
-        value={value ?? ""}
-        onChange={(e) => onChange(e.target.value)}
-        className="text-sm text-gray-800 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 transition-all"
-      />
+      <label className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{label}</label>
+      <input type={type} value={value ?? ""} onChange={(e) => onChange(e.target.value)} className="text-sm text-gray-800 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 focus:border-indigo-400 transition-all" />
     </div>
   );
 }
@@ -32,25 +17,19 @@ function Field({
 function SectionTitle({ title }: { title: string }) {
   return (
     <div className="flex items-center gap-2 mt-2">
-      <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest whitespace-nowrap">
-        {title}
-      </p>
+      <p className="text-xs font-bold text-indigo-600 uppercase tracking-widest whitespace-nowrap">{title}</p>
       <div className="flex-1 h-px bg-indigo-100" />
     </div>
   );
 }
 
-
-
-export default function InvoicePreviewModal({
-  file,
-  onClose,
-  onUpdate
-}: {
+interface InvoicePreviewModalProps {
   file: ExtractedFile;
   onClose: () => void;
   onUpdate: (updatedFile: ExtractedFile) => void;
-}) {
+}
+
+export default function InvoicePreviewModal({file, onClose, onUpdate}: InvoicePreviewModalProps) {
 
   const emptyForm: InvoiceData = {
     invoice_id: "",
@@ -81,20 +60,20 @@ export default function InvoicePreviewModal({
   const [form, setForm] = useState<InvoiceData>(emptyForm);
 
   const handleUpdate = () => {
-  const updatedFile: ExtractedFile = {
-    ...file,
-    extractedData: form,
-    type: "invoice",
-    status: "done",
+    const updatedFile: ExtractedFile = {
+      ...file,
+      extractedData: form,
+      type: "invoice",
+      status: "done",
+    };
+
+    onUpdate(updatedFile);
+    onClose();
   };
 
-  onUpdate(updatedFile);
-  onClose();
-};
-
-const handleCancel = () => {
-  onClose();
-};
+  const handleCancel = () => {
+    onClose();
+  };
 
   useEffect(() => {
     if (!file?.extractedData) return;
@@ -177,33 +156,23 @@ const handleCancel = () => {
   const isImage = /\.(png|jpe?g|webp)$/i.test(file.file.name);
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/50 flex  items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <div className="fixed inset-0 z-50 bg-black/50 flex  items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[92vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-gray-100 shrink-0">
           <div>
-            <p className="text-sm font-semibold text-gray-800">
-              {file.fileName}
-            </p>
-            <p className="text-xs text-gray-400">
-              Invoice Preview & Edit
-            </p>
+            <p className="text-sm font-semibold text-gray-800">{file.fileName}</p>
+            <p className="text-xs text-gray-400">Invoice Preview & Edit</p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={onClose}>✕</button>
           </div>
         </div>
 
-               {/* Body */}
+        {/* Body */}
         <div className="flex flex-1 overflow-hidden divide-x divide-gray-100">
 
-          {/* LEFT — Editable Fields */}
+          {/* Editable Fields */}
           <div className="w-1/2 overflow-y-auto p-5 flex flex-col gap-3">
 
             {file.status === "extracting" && (
@@ -219,7 +188,7 @@ const handleCancel = () => {
             <SectionTitle title="Invoice Info" />
             <div className="grid grid-cols-2 gap-3">
               <Field label="Invoice ID" value={form.invoice_id} onChange={(v) => set("invoice_id", v)} />
-              <Field label="PO ID" value={form.po_id} onChange={(v) => set("po_id", v)} />
+              {form.po_id && <Field label="PO ID" value={form.po_id} onChange={(v) => set("po_id", v)} />}
               <Field label="Invoice Date" value={form.invoice_date} type="date" onChange={(v) => set("invoice_date", v)} />
               <Field label="Due Date" value={form.due_date} type="date" onChange={(v) => set("due_date", v)} />
             </div>
@@ -246,11 +215,7 @@ const handleCancel = () => {
             <div className="flex flex-col gap-2">
               {form.invoice_items.map((item, i) => (
                 <div key={i} className="border border-gray-100 rounded-xl p-3 bg-gray-50 flex flex-col gap-2 relative group">
-                  <button
-                    onClick={() => removeItem(i)}
-                    className="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                    title="Remove item"
-                  >✕</button>
+                  <button onClick={() => removeItem(i)} className="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity" title="Remove item">✕</button>
                   <Field label="Description" value={item.item_description} onChange={(v) => setItem(i, "item_description", v)} />
                   <div className="grid grid-cols-3 gap-2">
                     <Field label="Qty" value={item.quantity} type="number" onChange={(v) => setItem(i, "quantity", v)} />
@@ -271,42 +236,32 @@ const handleCancel = () => {
             </div>
           </div>
 
-          {/* RIGHT — File Preview */}
+          {/* File Preview */}
           <div className="w-1/2 flex flex-col overflow-hidden bg-gray-50">
             <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest px-5 pt-4 pb-2 shrink-0">File Preview</p>
             {isImage ? (
-  <div className="flex-1 overflow-y-auto p-4">
-    <img
-      src={URL.createObjectURL(file.file)}
-      alt={file.fileName}
-      className="rounded-xl w-full object-contain shadow-sm"
-    />
-  </div>
-) : (
-  <iframe
-    src={URL.createObjectURL(file.file)}
-    className="flex-1 w-full border-0"
-    title="PO File Preview"
-  />
-)}
+              <div className="flex-1 overflow-y-auto p-4">
+                <img
+                  src={URL.createObjectURL(file.file)}
+                  alt={file.fileName}
+                  className="rounded-xl w-full object-contain shadow-sm"
+                />
+              </div>
+            ) : (
+              <iframe
+                src={URL.createObjectURL(file.file)}
+                className="flex-1 w-full border-0"
+                title="PO File Preview"
+              />
+            )}
           </div>
         </div>
-            {/* Footer Buttons */}
-<div className="border-t border-gray-100 px-6 py-3 flex justify-end gap-3 shrink-0 bg-white">
-  <button
-    onClick={handleCancel}
-    className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all"
-  >
-    Cancel
-  </button>
 
-  <button
-    onClick={handleUpdate}
-    className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-all shadow-sm"
-  >
-    Update
-  </button>
-</div>
+        {/* Footer Buttons */}
+        <div className="border-t border-gray-100 px-6 py-3 flex justify-end gap-3 shrink-0 bg-white">
+          <button onClick={handleCancel} className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition-all">Cancel</button>
+          <button onClick={handleUpdate} className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-all shadow-sm">Update </button>
+        </div>
       </div>
       
     </div>
