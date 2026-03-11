@@ -41,7 +41,7 @@ export default function PurchaseOrderPreviewModal({file, onClose, onUpdate}: { f
       account_number: "",
       ifsc_code: "",
     },
-    order_items: [],
+    ordered_items: [],
     file_url: ""
   };
 
@@ -85,7 +85,7 @@ export default function PurchaseOrderPreviewModal({file, onClose, onUpdate}: { f
         account_number: raw.vendor?.account_number ?? "",
         ifsc_code: raw.vendor?.ifsc_code ?? "",
       },
-      order_items: raw.order_items ?? [],
+      ordered_items: raw.ordered_items ?? [],
       file_url: raw.file_url ?? ""
     });
   }, [file.extractedData]);
@@ -114,18 +114,18 @@ export default function PurchaseOrderPreviewModal({file, onClose, onUpdate}: { f
 
   const setItem = (i: number, key: keyof OrderedItem, val: string) => {
     setForm((prev) => {
-      const items = structuredClone(prev.order_items);
+      const items = structuredClone(prev.ordered_items);
       (items[i] as any)[key] = ["quantity", "unit_price", "total_price"].includes(key)
         ? Number(val)
         : val;
-      return { ...prev, order_items: items };
+      return { ...prev, ordered_items: items };
     });
   };
 
   const removeItem = (i: number) => {
     setForm((prev) => ({
       ...prev,
-      order_items: prev.order_items.filter((_, idx) => idx !== i),
+      ordered_items: prev.ordered_items.filter((_, idx) => idx !== i),
     }));
   };
 
@@ -189,7 +189,7 @@ export default function PurchaseOrderPreviewModal({file, onClose, onUpdate}: { f
               <SectionTitle title="Ordered Items" />
             </div>
             <div className="flex flex-col gap-2">
-              {form.order_items.map((item, i) => (
+              {form.ordered_items.map((item, i) => (
                 <div key={i} className="border border-gray-100 rounded-xl p-3 bg-gray-50 flex flex-col gap-2 relative group">
                   <button onClick={() => removeItem(i)} className="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity" title="Remove item" >✕</button>
                   <Field label="Description" value={item.item_description} onChange={(v) => setItem(i, "item_description", v)} />
@@ -200,7 +200,7 @@ export default function PurchaseOrderPreviewModal({file, onClose, onUpdate}: { f
                   </div>
                 </div>
               ))}
-              {form.order_items.length === 0 && (
+              {form.ordered_items.length === 0 && (
                 <p className="text-xs text-gray-400 text-center py-3">No items yet. Click "+ Add Item" to add one.</p>
               )}
             </div>

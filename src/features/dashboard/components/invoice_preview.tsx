@@ -3,8 +3,6 @@ import { useState, useEffect } from "react";
 import type { ExtractedFile, FiledProps } from "../../../types/process";
 import type { InvoiceData, InvoiceItem } from "../../../types/invoice";
 
-
-
 function Field({ label, value, onChange, type = "text"}: FiledProps) {
   return (
     <div className="flex flex-col gap-0.5">
