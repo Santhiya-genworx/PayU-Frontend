@@ -1,4 +1,3 @@
-
 function fmt(n: number, code = "INR") {
   const symbol = code === "INR" ? "₹" : code;
   return `${symbol} ${Number(n).toLocaleString("en-IN")}`;

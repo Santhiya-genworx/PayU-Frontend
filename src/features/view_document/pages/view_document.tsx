@@ -61,15 +61,9 @@ function FilterBar({ search, setSearch, placeholder }: {search: string; setSearc
 }
 
 function HistoryButton({ onClick, color }: { onClick: () => void; color: "blue" | "violet" }) {
-  const cls = color === "blue"
-    ? "border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300"
-    : "border-violet-200 text-violet-600 hover:bg-violet-50 hover:border-violet-300";
+  const cls = color === "blue" ? "border-blue-200 text-blue-600 hover:bg-blue-50 hover:border-blue-300" : "border-violet-200 text-violet-600 hover:bg-violet-50 hover:border-violet-300";
   return (
-    <button
-      onClick={onClick}
-      title="View upload history"
-      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${cls}`}
-    >
+    <button onClick={onClick} title="View upload history" className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${cls}`}>
       <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <path d="M3 3v5h5"/>
         <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/>
@@ -107,13 +101,9 @@ function InvoiceTable({ invoices, selected, onSelect, loading }: {invoices: Invo
           </tr>
         </thead>
         <tbody>
-          {invoices.length === 0 && (
-            <tr><td colSpan={6} className="text-center py-16 text-gray-400 text-sm">No invoices found</td></tr>
-          )}
+          {invoices.length === 0 && (<tr><td colSpan={6} className="text-center py-16 text-gray-400 text-sm">No invoices found</td></tr>)}
           {invoices.map(inv => (
-            <tr key={inv.invoice_id} onClick={() => onSelect(inv)}
-              className={`border-b border-gray-50 last:border-0 cursor-pointer transition-colors
-                ${selected?.invoice_id === inv.invoice_id ? "bg-blue-50" : "hover:bg-gray-50"}`}>
+            <tr key={inv.invoice_id} onClick={() => onSelect(inv)} className={`border-b border-gray-50 last:border-0 cursor-pointer transition-colors ${selected?.invoice_id === inv.invoice_id ? "bg-blue-50" : "hover:bg-gray-50"}`}>
               <td className="py-3 px-4">
                 <div className="flex items-center gap-2">
                   <span className="w-8 h-8 rounded-lg flex items-center justify-center text-sm shrink-0 bg-blue-50 text-blue-600">🧾</span>
@@ -250,9 +240,7 @@ function POTable({ pos, selected, onSelect, loading }: {pos: POData[]; selected:
           </tr>
         </thead>
         <tbody>
-          {pos.length === 0 && (
-            <tr><td colSpan={6} className="text-center py-16 text-gray-400 text-sm">No purchase orders found</td></tr>
-          )}
+          {pos.length === 0 && (<tr><td colSpan={6} className="text-center py-16 text-gray-400 text-sm">No purchase orders found</td></tr>)}
           {pos.map(po => (
             <tr key={po.po_id} onClick={() => onSelect(po)} className={`border-b border-gray-50 last:border-0 cursor-pointer transition-colors ${selected?.po_id === po.po_id ? "bg-violet-50" : "hover:bg-gray-50"}`}>
               <td className="py-3 px-4">
@@ -345,7 +333,7 @@ function PODetailPanel({ po, onClose, onOpenHistory }: { po: POData; onClose: ()
                     </tr>
                   </thead>
                   <tbody>
-                    {(po.order_items ?? []).map((item: any, i: number) => (
+                    {(po.ordered_items ?? []).map((item: any, i: number) => (
                       <tr key={i} className="border-t border-gray-50">
                         <td className="px-3 py-2 text-gray-700">{item.item_description}</td>
                         <td className="px-3 py-2 text-right text-gray-500">{item.quantity}</td>
@@ -398,7 +386,6 @@ function ViewDocuments() {
     docId: string;
     vendorName: string;
   }>({ open: false, docType: "invoice", docId: "", vendorName: "" });
-
 
   const user = useSelector((state: RootState) => state.auth.user);
 
@@ -571,13 +558,7 @@ function ViewDocuments() {
           </div>
         </main>
       </div>
-      <HistoryShower
-        open={historyDrawer.open}
-        onClose={closeHistory}
-        docType={historyDrawer.docType}
-        docId={historyDrawer.docId}
-        vendorName={historyDrawer.vendorName}
-      />
+      <HistoryShower open={historyDrawer.open} onClose={closeHistory} docType={historyDrawer.docType} docId={historyDrawer.docId} vendorName={historyDrawer.vendorName} />
     </div>
   );
 }

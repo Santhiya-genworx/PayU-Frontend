@@ -33,14 +33,11 @@ function FileViewer({fileUrl, id, vendor, date}: FileViewerProps) {
         </div>
       )}
 
-      {isPdf && (
-        <iframe src={fileUrl} className="flex-1 w-full border-0" title="PDF Preview"/>
-      )}
+      {isPdf && (<iframe src={fileUrl} className="flex-1 w-full border-0" title="PDF Preview"/>)}
 
       {!isImage && !isPdf && (
         <div className="flex flex-col items-center justify-center h-full gap-3 text-gray-500">
           <p>Preview not available</p>
-
           <a href={fileUrl} target="_blank" rel="noopener noreferrer" className="bg-indigo-600 text-white px-4 py-2 rounded-lg">Download File</a>
         </div>
       )}

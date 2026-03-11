@@ -5,6 +5,7 @@ import { useState } from "react";
 import Toast from "../../../components/common/toast";
 import { useAppDispatch } from "../../auth/hooks/authHook";
 import type { User } from "../../../types/user";
+import type { ToastState } from "../../../types/toast";
 
 interface NavItem {
   icon: string;
@@ -22,18 +23,13 @@ function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; 
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
 
-  const [showToast, setShowToast] = useState(false);
-  const [message, setMessage] = useState("");
-  const [msgType, setMsgType] = useState<"info" | "success" | "error">("info");
-
+  const [toast, setToast] = useState<ToastState>({ visible: false, message: "", type: "info" });
   const handleLogout = () => {
     try {
       dispatch(logout()).unwrap();
       navigate("/", { replace: true });
     } catch (error) {
-      setMessage("Logout failed. Try again!");
-      setMsgType("error");
-      setShowToast(true);
+      setToast({visible:true, message: "Login failed. Try again!", type: "error"});
     }
   };
 
@@ -75,9 +71,7 @@ function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; 
         {/* Bottom */}
         <div className="p-4 border-t border-gray-700 flex flex-col gap-3 items-center">
           <div className="flex items-center gap-2 text-sm text-gray-400">
-            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold">
-              {user.initials}
-            </div>
+            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold">{user.initials}</div>
             <span className="truncate">{user.name}</span>
           </div>
 
@@ -87,7 +81,7 @@ function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; 
         </div>
       </aside>
 
-      {showToast && (<Toast message={message} type={msgType} onClose={() => setShowToast(false)} />)}
+      {toast.visible && (<Toast message={toast.message} type={toast.type} onClose={() => setToast({visible: false, message: "", type: "info"})} />)}
     </>
   );
 }

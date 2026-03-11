@@ -61,10 +61,10 @@ function Dashboard() {
   const [toast, setToast] = useState<ToastState>({ visible: false, message: "", type: "info" });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [stats, setStats] = useState([
-    { label: "Total Documents", value: 0 as number | string, sub: "All time",          accentClass: "border-t-blue-600"  },
-    { label: "Approved",        value: 0 as number | string, sub: "0% success rate",   accentClass: "border-t-green-600" },
-    { label: "Pending Review",  value: 0 as number | string, sub: "Awaiting approval", accentClass: "border-t-amber-500" },
-    { label: "Failed",          value: 0 as number | string, sub: "Needs attention",   accentClass: "border-t-red-500"   },
+    { label: "Total Documents", value: 0 as number | string, sub: "All time", accentClass: "border-t-blue-600"  },
+    { label: "Approved", value: 0 as number | string, sub: "0% success rate", accentClass: "border-t-green-600" },
+    { label: "Pending Review", value: 0 as number | string, sub: "Awaiting approval", accentClass: "border-t-amber-500" },
+    { label: "Failed", value: 0 as number | string, sub: "Needs attention", accentClass: "border-t-red-500"   },
   ]);
   const [selectedFile, setSelectedFile] = useState<ExtractedFile | null>(null);
   const [recentActivity, setRecentActivity] = useState<ActivityRow[]>([]);
@@ -162,22 +162,22 @@ function Dashboard() {
             setToast({ visible: true, message: error ?? "Extraction failed", type: "error" });
           }
         });
-      } catch (error) {
+      } catch (error: any) {
         const errEntry: ExtractedFile = { ...entry, status: "error" };
         dispatch(updateFile(errEntry));
         setSelectedFile((cur) => cur?.id === entry.id ? errEntry : cur);
-        setToast({ visible: true, message: String(error), type: "error" });
+        setToast({ visible: true, message: error?.response?.data?.message ?? error?.message ?? String(error), type: "error" });
       }
     }
   };
 
   const handleAddUser = async (data: { name: string; email: string; password: string; role: "associate" | "manager" }) => {
-    
     try {
       await createUser(data);
       setToast({ visible: true, message: `User "${data.name}" added successfully!`, type: "success" });
-    } catch (error) {
-      setToast({ visible: true, message: `Adding user failed!`, type: "error" });
+    } catch (error: any) {
+      const msg = error?.response?.data?.message ?? error?.message ?? "Adding user failed!";
+      setToast({ visible: true, message: msg, type: "error" });
     }
   };
 
@@ -399,11 +399,7 @@ function Dashboard() {
 
       {confirmationFile && progressModalOpen && (<ConfirmationModal open={true} message={`"${confirmationFile.fileName}" already exists.`} onConfirm={handleConfirmOverride} onCancel={handleCancelOverride} />)}
 
-      <AddUserModal
-        open={addUserOpen}
-        onClose={() => setAddUserOpen(false)}
-        onSubmit={handleAddUser}
-      />
+      <AddUserModal open={addUserOpen} onClose={() => setAddUserOpen(false)} onSubmit={handleAddUser} />
 
       {toast.visible && (<Toast message={toast.message} type={toast.type} onClose={() => setToast({ visible: false, message: "", type: "info" })} />)}
     </div>

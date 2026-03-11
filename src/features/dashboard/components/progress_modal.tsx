@@ -71,9 +71,7 @@ export default function ProgressModal({files, submitFn, overrideFn, pollFn, onCl
       onSuccess(`${file.fileName} saved successfully`);
       dispatch(removeFile(file.id));
     } catch (err: any) {
-      const isDuplicate =
-        err?.response?.status === 409 ||
-        (err?.message as string)?.startsWith("409:");
+      const isDuplicate = err?.response?.status === 409 || (err?.message as string)?.startsWith("409:");
 
       if (isDuplicate) {
         dispatch(updateFile({ ...file, status: "confirmation_required" } as ExtractedFile));
@@ -128,9 +126,7 @@ export default function ProgressModal({files, submitFn, overrideFn, pollFn, onCl
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4">
           <h3 className="text-base font-semibold text-gray-800">{done ? allSuccess ? "All files saved!" : hasError ? "Some files failed" : "Done" : "Saving files…"}</h3>
-          <button onClick={onClose} title="Close — uploads continue in background" className="text-gray-400 hover:text-gray-600 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-lg leading-none" >
-            ✕
-          </button>
+          <button onClick={onClose} title="Close — uploads continue in background" className="text-gray-400 hover:text-gray-600 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-lg leading-none" >✕</button>
         </div>
 
         {/* Progress bar */}

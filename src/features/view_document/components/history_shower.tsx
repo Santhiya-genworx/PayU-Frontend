@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from "react";
 import { getInvoiceUploadHistory, getPOUploadHistory } from "../services/documentService";
 import type { UploadHistoryItem } from "../../../types/history";
 
-
 interface UploadHistoryDrawerProps {
   open: boolean;
   onClose: () => void;
@@ -58,9 +57,7 @@ export default function UploadHistoryDrawer({ open, onClose, docType, docId, ven
     setError(null);
     setLoading(true);
 
-    const fetch = docType === "invoice"
-      ? getInvoiceUploadHistory(docId)
-      : getPOUploadHistory(docId);
+    const fetch = docType === "invoice" ? getInvoiceUploadHistory(docId) : getPOUploadHistory(docId);
 
     fetch
       .then((res) => setHistory(Array.isArray(res) ? res : []))
@@ -108,17 +105,10 @@ export default function UploadHistoryDrawer({ open, onClose, docType, docId, ven
   return (
     <>
       {/* Backdrop */}
-      <div
-        className={`fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity duration-300 ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
-      />
+      <div className={`fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px] transition-opacity duration-300 ${open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}/>
 
       {/* Drawer */}
-      <div
-        ref={drawerRef}
-        className={`fixed top-0 right-0 h-full z-50 w-96 max-w-[90vw] bg-white shadow-2xl flex flex-col
-          transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]
-          ${open ? "translate-x-0" : "translate-x-full"}`}
-      >
+      <div ref={drawerRef} className={`fixed top-0 right-0 h-full z-50 w-96 max-w-[90vw] bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${open ? "translate-x-0" : "translate-x-full"}`}>
         {/* Header */}
         <div className={`border-t-4 ${accentClasses.border} px-5 pt-5 pb-4 border-b border-gray-100 shrink-0`}>
           <div className="flex items-start justify-between gap-3">
@@ -131,10 +121,7 @@ export default function UploadHistoryDrawer({ open, onClose, docType, docId, ven
                 <p className="text-xs text-gray-400 truncate">{vendorName}</p>
               </div>
             </div>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-700 text-xl leading-none shrink-0 transition-colors mt-0.5"
-            >✕</button>
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl leading-none shrink-0 transition-colors mt-0.5">✕</button>
           </div>
 
           <div className="mt-3 flex items-center justify-between">
@@ -149,11 +136,7 @@ export default function UploadHistoryDrawer({ open, onClose, docType, docId, ven
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto">
-          {loading && (
-            <div className="flex flex-col">
-              {[1, 2, 3].map((i) => <SkeletonRow key={i} />)}
-            </div>
-          )}
+          {loading && (<div className="flex flex-col">{[1, 2, 3].map((i) => <SkeletonRow key={i} />)}</div>)}
 
           {error && (
             <div className="flex flex-col items-center justify-center h-40 gap-3 px-6 text-center">
@@ -189,9 +172,7 @@ export default function UploadHistoryDrawer({ open, onClose, docType, docId, ven
                     {/* Timeline spine */}
                     <div className="flex flex-col items-center shrink-0">
                       <div className={`w-3 h-3 rounded-full ring-4 shrink-0 mt-1 ${accentClasses.dot}`} />
-                      {idx !== (history?.length ?? 0) - 1 && (
-                        <div className="w-0.5 flex-1 bg-gray-100 my-1 min-h-6" />
-                      )}
+                      {idx !== (history?.length ?? 0) - 1 && (<div className="w-0.5 flex-1 bg-gray-100 my-1 min-h-6" />)}
                     </div>
 
                     {/* Card */}
@@ -200,9 +181,7 @@ export default function UploadHistoryDrawer({ open, onClose, docType, docId, ven
                       <div className="flex items-baseline gap-2 mb-2">
                         <p className="text-xs font-semibold text-gray-700">{formatDate(item.action_date)}</p>
                         <p className="text-xs text-gray-400">{formatTime(item.action_date)}</p>
-                        {idx === 0 && (
-                          <span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-semibold">Latest</span>
-                        )}
+                        {idx === 0 && (<span className="ml-auto text-xs px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-semibold">Latest</span>)}
                       </div>
 
                       {/* File cards */}
@@ -216,14 +195,7 @@ export default function UploadHistoryDrawer({ open, onClose, docType, docId, ven
                             <div className="flex-1 min-w-0">
                               <p className="text-xs text-gray-400 mb-0.5">New file</p>
                               <p className="text-xs font-medium text-gray-700 break-all leading-relaxed">{getFilename(item.new_file_url)}</p>
-                              <a
-                                href={item.new_file_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`text-xs font-medium underline underline-offset-2 mt-1 inline-block ${accentClasses.link}`}
-                              >
-                                View file ↗
-                              </a>
+                              <a href={item.new_file_url} target="_blank" rel="noopener noreferrer" className={`text-xs font-medium underline underline-offset-2 mt-1 inline-block ${accentClasses.link}`}>View file ↗</a>
                             </div>
                           </div>
                         </div>
@@ -244,14 +216,7 @@ export default function UploadHistoryDrawer({ open, onClose, docType, docId, ven
                             <div className="flex-1 min-w-0">
                               <p className="text-xs text-gray-400 mb-0.5">Previous file</p>
                               <p className="text-xs font-medium text-gray-500 break-all leading-relaxed">{getFilename(item.old_file_url)}</p>
-                              <a
-                                href={item.old_file_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs font-medium text-gray-400 hover:text-gray-600 underline underline-offset-2 mt-1 inline-block"
-                              >
-                                View file ↗
-                              </a>
+                              <a href={item.old_file_url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-gray-400 hover:text-gray-600 underline underline-offset-2 mt-1 inline-block">View file ↗</a>
                             </div>
                           </div>
                         </div>
@@ -266,9 +231,7 @@ export default function UploadHistoryDrawer({ open, onClose, docType, docId, ven
 
         {/* Footer */}
         <div className="px-5 py-4 border-t border-gray-100 shrink-0">
-          <p className="text-xs text-gray-400 text-center">
-            Showing all {history?.length ?? 0} upload event{(history?.length ?? 0) !== 1 ? "s" : ""} · newest first
-          </p>
+          <p className="text-xs text-gray-400 text-center">Showing all {history?.length ?? 0} upload event{(history?.length ?? 0) !== 1 ? "s" : ""} · newest first</p>
         </div>
       </div>
     </>
