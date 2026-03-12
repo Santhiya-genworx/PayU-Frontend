@@ -246,12 +246,8 @@ function Dashboard() {
           {/* Upload + Extracted Files */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-4">
-              {user.role === "associate" && (
-                <UploadBox type="Invoice" accentClass="border-t-blue-600" iconBg="bg-blue-50 text-blue-600" icon="🧾" accept=".pdf,.png,.jpg,.jpeg" onUpload={handleUpload} />
-              )}
-              {user.role === "admin" && (
-                <UploadBox type="Purchase Order" accentClass="border-t-violet-600" iconBg="bg-violet-50 text-violet-600" icon="📋" accept=".pdf,.png,.jpg,.jpeg,.docx" onUpload={handleUpload} />
-              )}
+              {user.role === "associate" && (<UploadBox type="Invoice" accentClass="border-t-blue-600" iconBg="bg-blue-50 text-blue-600" icon="🧾" accept=".pdf,.png,.jpg,.jpeg" onUpload={handleUpload} />)}
+              {user.role === "admin" && (<UploadBox type="Purchase Order" accentClass="border-t-violet-600" iconBg="bg-violet-50 text-violet-600" icon="📋" accept=".pdf,.png,.jpg,.jpeg,.docx" onUpload={handleUpload} />)}
             </div>
 
             {/* Extracted Files List */}
