@@ -46,10 +46,10 @@ function Login() {
       });
       setTimeout(()=>navigate("/dashboard"), 2500);
     }
-    catch (error) {
+    catch (error: any) {
       setToast({
         visible: true,
-        message: "Login failed. Try again!",
+        message: error?.response?.data?.message ?? error?.message ?? "Login failed. Try again!",
         type: "error",
       });
     }

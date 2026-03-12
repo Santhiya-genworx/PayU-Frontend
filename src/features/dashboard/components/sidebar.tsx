@@ -5,34 +5,31 @@ import { useState } from "react";
 import Toast from "../../../components/common/toast";
 import { useAppDispatch } from "../../auth/hooks/authHook";
 import type { User } from "../../../types/user";
+import type { ToastState } from "../../../types/toast";
 
 interface NavItem {
   icon: string;
   label: string;
   path?: string;
+  users: string[]
 }
 
-const NAV_ITEMS: NavItem[] = [
-  { icon: "⊞", label: "Dashboard", path: "/dashboard" },
-  { icon: "☰", label: "All Documents", path: "/documents" },
+const nav_items: NavItem[] = [
+  { icon: "⊞", label: "Dashboard", path: "/dashboard", users: ["admin", "associate"] },
+  { icon: "☰", label: "All Documents", path: "/documents", users: ["admin"] },
 ];
 
 function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; user: User & { initials: string }; }) {
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
 
-  const [showToast, setShowToast] = useState(false);
-  const [message, setMessage] = useState("");
-  const [msgType, setMsgType] = useState<"info" | "success" | "error">("info");
-
+  const [toast, setToast] = useState<ToastState>({ visible: false, message: "", type: "info" });
   const handleLogout = () => {
     try {
       dispatch(logout()).unwrap();
       navigate("/", { replace: true });
     } catch (error) {
-      setMessage("Logout failed. Try again!");
-      setMsgType("error");
-      setShowToast(true);
+      setToast({visible:true, message: "Login failed. Try again!", type: "error"});
     }
   };
 
@@ -61,20 +58,20 @@ function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; 
 
         {/* Nav */}
         <nav className="flex-1 p-4 flex flex-col gap-2">
-          {NAV_ITEMS.map((item) => (
-            <button key={item.label} onClick={() => handleNavigation(item.path)} className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 transition-colors cursor-pointer">
-              <span>{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
+          {nav_items
+            .filter(item => item.users.includes(user?.role))
+            .map((item) => (
+              <button key={item.label} onClick={() => handleNavigation(item.path)} className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm text-gray-300 hover:bg-gray-800 transition-colors cursor-pointer">
+                <span>{item.icon}</span>
+                {item.label}
+              </button>
+            ))}
         </nav>
 
         {/* Bottom */}
         <div className="p-4 border-t border-gray-700 flex flex-col gap-3 items-center">
           <div className="flex items-center gap-2 text-sm text-gray-400">
-            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold">
-              {user.initials}
-            </div>
+            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-xs font-semibold">{user.initials}</div>
             <span className="truncate">{user.name}</span>
           </div>
 
@@ -84,7 +81,7 @@ function Sidebar({ open, onClose, user }: { open: boolean; onClose: () => void; 
         </div>
       </aside>
 
-      {showToast && (<Toast message={message} type={msgType} onClose={() => setShowToast(false)} />)}
+      {toast.visible && (<Toast message={toast.message} type={toast.type} onClose={() => setToast({visible: false, message: "", type: "info"})} />)}
     </>
   );
 }

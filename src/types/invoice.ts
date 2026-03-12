@@ -10,7 +10,7 @@ export interface InvoiceItem {
 export interface InvoiceData {
   invoice_id: string;
   vendor: Vendor;
-  po_id: string;
+  po_id: string | null;
   invoice_date: string;
   due_date: string;
   invoice_items: InvoiceItem[];

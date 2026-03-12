@@ -2,12 +2,17 @@ import api from "../../../lib/axios";
 import type { InvoiceData } from "../../../types/invoice";
 import type { POData } from "../../../types/purchase_order";
 
+export const createUser = async (data: { name: string; email: string; password: string; role: "associate" | "manager" }) => {
+  const response =  await api.post("/auth/users/create", data, { withCredentials: true })
+  return response.data;
+}
+
 export const extractInvoice = async (file: File): Promise<string> => {
   const formData = new FormData();
   formData.append("file", file);
 
   const response = await api.post("/process/extract/invoice", formData, { withCredentials: true });
-  return response.data.file_id; // returns file_id for polling
+  return response.data.file_id; 
 };
 
 export const extractPurchaseOrder = async (file: File): Promise<string> => {
@@ -15,7 +20,7 @@ export const extractPurchaseOrder = async (file: File): Promise<string> => {
   formData.append("file", file);
 
   const response = await api.post("/process/extract/purchase-order", formData, { withCredentials: true });
-  return response.data.file_id; // returns file_id for polling
+  return response.data.file_id; 
 };
 
 export const pollExtractionStatus = async (
@@ -41,9 +46,9 @@ export const pollExtractionStatus = async (
         onProgress(data.status, data.result, data.error);
 
         if (data.status === "processing") {
-          setTimeout(check, intervalMs); // keep polling
+          setTimeout(check, intervalMs);
         } else {
-          resolve(); // completed or failed — stop
+          resolve();
         }
       } catch (err: any) {
         const message = err?.response?.data?.detail ?? err?.message ?? "Status check failed";
@@ -109,15 +114,15 @@ export const overrideInvoice = async (data: InvoiceData, file: File) => {
   formData.append("file", file);
   formData.append("data", JSON.stringify(data));
 
-  const response = await api.post("/process/invoice/override", formData, { withCredentials: true });
+  const response = await api.put("/process/upload/invoice/override", formData, { withCredentials: true });
   return response.data;
 }
 
-export const overridePurchaseOrders = async (data: POData, file: File) => {
+export const overridePurchaseOrder = async (data: POData, file: File) => {
   const formData = new FormData();
   formData.append("file", file);
   formData.append("data", JSON.stringify(data));
 
-  const response = await api.post("/process/purchase-order/override", formData, { withCredentials: true });
+  const response = await api.put("/process/upload/purchase-order/override", formData, { withCredentials: true });
   return response.data;
 }
