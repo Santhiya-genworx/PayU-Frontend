@@ -7,10 +7,10 @@ import { Navigate } from "react-router-dom";
 import type { InvoiceData } from "../../../types/invoice";
 import type { POData } from "../../../types/purchase_order";
 import { fetchUser } from "../../auth/slices/authSlice";
-import SummaryBar from "../components/summary_bar";
 import FileViewer from "../components/file_viewer";
 import VendorBlock from "../components/vendor_block";
 import HistoryShower from "../components/history_shower";
+import SummaryBar from "../components/summary_bar";
 
 type DocStatus = "approved" | "pending" | "rejected";
 type ActiveDocTab = "Invoice" | "Purchase Order";

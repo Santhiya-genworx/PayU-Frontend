@@ -38,13 +38,18 @@ function Login() {
     }
 
     try {
-      await dispatch(login(formData)).unwrap();
+      const user = await dispatch(login(formData)).unwrap();
       setToast({
         visible: true,
         message: "Login successful!",
         type: "success",
       });
-      setTimeout(()=>navigate("/dashboard"), 2500);
+      let path = "/";
+      if(user.role == "admin")
+        path = "/admin-dashboard";
+      else if(user.role == "associate")
+        path = "/associate-dashboard";
+      setTimeout(()=>navigate(path), 2500);
     }
     catch (error: any) {
       setToast({
