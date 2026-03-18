@@ -1,1 +1,1 @@
-export const apiUrl = "http://localhost:8000";
+export const apiUrl = "https://payu-main-service-717740758627.us-east1.run.app";
