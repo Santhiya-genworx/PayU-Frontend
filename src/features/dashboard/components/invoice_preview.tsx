@@ -32,6 +32,7 @@ export default function InvoicePreviewModal({file, onClose, onUpdate}: InvoicePr
   const emptyForm: InvoiceData = {
     invoice_id: "",
     po_id: "",
+    is_po_matched: false,
     invoice_date: "",
     due_date: "",
     currency_code: "",
@@ -52,7 +53,8 @@ export default function InvoicePreviewModal({file, onClose, onUpdate}: InvoicePr
       ifsc_code: "",
     },
     invoice_items: [],
-    file_url: ""
+    file_url: "",
+    status: "pending",
   };
 
   const [form, setForm] = useState<InvoiceData>(emptyForm);
@@ -81,6 +83,7 @@ export default function InvoicePreviewModal({file, onClose, onUpdate}: InvoicePr
     setForm({
       invoice_id: raw.invoice_id ?? "",
       po_id: raw.po_id ?? "",
+      is_po_matched: raw.is_po_matched ?? false,
       invoice_date: raw.invoice_date ?? "",
       due_date: raw.due_date ?? "",
       currency_code: raw.currency_code ?? "",
@@ -101,7 +104,8 @@ export default function InvoicePreviewModal({file, onClose, onUpdate}: InvoicePr
         ifsc_code: raw.vendor?.ifsc_code ?? "",
       },
       invoice_items: raw.invoice_items ?? [],
-      file_url: raw.file_url ?? ""
+      file_url: raw.file_url ?? "",
+      status: raw.status ??  "pending"
     });
   }, [file.extractedData]);
 
@@ -216,8 +220,8 @@ export default function InvoicePreviewModal({file, onClose, onUpdate}: InvoicePr
                   <button onClick={() => removeItem(i)} className="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity" title="Remove item">✕</button>
                   <Field label="Description" value={item.item_description} onChange={(v) => setItem(i, "item_description", v)} />
                   <div className="grid grid-cols-3 gap-2">
-                    <Field label="Qty" value={item.quantity} type="number" onChange={(v) => setItem(i, "quantity", v)} />
-                    <Field label="Unit Price" value={item.unit_price} type="number" onChange={(v) => setItem(i, "unit_price", v)} />
+                    {item.quantity && <Field label="Qty" value={item.quantity} type="number" onChange={(v) => setItem(i, "quantity", v)} />}
+                    {item.unit_price && <Field label="Unit Price" value={item.unit_price} type="number" onChange={(v) => setItem(i, "unit_price", v)} />}
                     <Field label="Total Price" value={item.total_price} type="number" onChange={(v) => setItem(i, "total_price", v)} />
                   </div>
                 </div>

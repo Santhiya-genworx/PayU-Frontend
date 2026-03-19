@@ -27,7 +27,7 @@ function Toast({ message, type = "info", duration = 2500, onClose,}: ToastProps)
   return (
     <div className={`toast ${isVisible ? "show" : ""} ${type}`}>
       {message}
-      <div className={`progress ${isVisible ? "animate" : ""}`} style={{ transition: `transform ${duration}ms linear` }} />
+      <div className={`progress ${isVisible ? "animate" : ""} w-125`} style={{ transition: `transform ${duration}ms linear` }} />
     </div>
   );
 }
