@@ -3,6 +3,11 @@ import { CheckCircle2, AlertTriangle, XCircle, Shield, Send, X, Mail } from "luc
 import type { Decision } from "../../../types/invoice";
 import { getInvoiceDecision } from "../services/documentService";
 import api from "../../../lib/axios";
+import type { AxiosError } from "axios";
+
+interface ApiErrorResponse {
+message?: string;
+}
 
 // ── Mail Modal ────────────────────────────────────────────────────────────────
 function MailModal({
@@ -20,18 +25,19 @@ function MailModal({
   const [error, setError]     = useState("");
 
   const handleSend = async () => {
-    setSending(true);
-    setError("");
-    try {
-      await api.post("process/invoice/send-mail", { to, subject, body }, { withCredentials: true });
-      setSent(true);
-      setTimeout(() => { setSent(false); onClose(); }, 1800);
-    } catch (err: any) {
-      setError(err?.response?.data?.message ?? err?.message ?? "Failed to send email.");
-    } finally {
-      setSending(false);
-    }
-  };
+  setSending(true);
+  setError("");
+  try {
+    await api.post("process/invoice/send-mail", { to, subject, body }, { withCredentials: true });
+    setSent(true);
+    setTimeout(() => { setSent(false); onClose(); }, 1800);
+  } catch (err: unknown) {
+    const axiosErr = err as AxiosError<ApiErrorResponse>;
+    setError(axiosErr?.response?.data?.message ?? axiosErr?.message ?? "Failed to send email.");
+  } finally {
+    setSending(false);
+  }
+};
 
   return (
     // Backdrop
@@ -135,7 +141,7 @@ export default function InvoiceStatusTab({ invoiceId }: { invoiceId: string }) {
         const res = await getInvoiceDecision(invoiceId);
         setDecision(res);
       } catch (err) {
-        console.error(err);
+        lo.error(err);
       } finally {
         setLoading(false);
       }

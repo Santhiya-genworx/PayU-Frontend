@@ -1,16 +1,27 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Search, FileText, SlidersHorizontal, ChevronLeft, ChevronRight,
-  Receipt, CheckCircle2, AlertTriangle, XCircle
+  Receipt, CheckCircle2, AlertTriangle, XCircle, LinkIcon,
 } from "lucide-react";
-import type { InvoiceData, Decision } from "../../../types/invoice";
+import type { AxiosError } from "axios";
+import type { InvoiceData } from "../../../types/invoice";
 import { formatCurrency } from "../../../lib/formatCurrency";
-import { getInvoiceDecision, approveInvoice } from "../services/documentService";
+import { approveInvoice } from "../services/documentService";
 import { DecisionDetailModal } from "./detail_panel";
 
-// ── Status badge (all 4 statuses) ─────────────────────────────────────────────
-function InvStatusBadge({ status }: { status: string }) {
+// ── Typed error helper ────────────────────────────────────────────────────────
+interface ApiErrorResponse {
+  message?: string;
+}
+
+function extractErrorMessage(err: unknown, fallback: string): string {
+  const axiosErr = err as AxiosError<ApiErrorResponse>;
+  return axiosErr?.response?.data?.message ?? axiosErr?.message ?? fallback;
+}
+
+// ── Matching status badge (pending/approved/reviewed/rejected) ─────────────────
+function MatchingStatusBadge({ status }: { status: string }) {
   const cfg: Record<string, { bg: string; text: string; dot: string; label: string }> = {
     approved: { bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500", label: "Approved" },
     pending:  { bg: "bg-amber-50",   text: "text-amber-700",   dot: "bg-amber-400",   label: "Pending"  },
@@ -35,8 +46,13 @@ function ConfirmApproveModal({ invoiceId, onConfirm, onCancel }: {
 
   const handleConfirm = async () => {
     setLoading(true); setError("");
-    try { await approveInvoice(invoiceId); onConfirm(); }
-    catch (err: any) { setError(err?.response?.data?.message ?? err?.message ?? "Approval failed."); setLoading(false); }
+    try {
+      await approveInvoice(invoiceId);
+      onConfirm();
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err, "Approval failed."));
+      setLoading(false);
+    }
   };
 
   return (
@@ -62,32 +78,32 @@ function ConfirmApproveModal({ invoiceId, onConfirm, onCancel }: {
   );
 }
 
-
 // ── Main List ─────────────────────────────────────────────────────────────────
 interface Props {
   invoices: InvoiceData[];
   selectedId: string | null;
+  selectedPoId: string | null;
   onSelect: (inv: InvoiceData) => void;
-  onStatusChange?: (invoiceId: string, newStatus: "approved" | "reviewed" | "rejected") => void;
+  onStatusChange?: (invoiceId: string, poId: string | null, newStatus: "approved" | "reviewed" | "rejected") => void;
 }
 
 const PAGE_SIZE = 10;
 
-export default function InvoiceList({ invoices, selectedId, onSelect, onStatusChange }: Props) {
+export default function InvoiceList({ invoices, selectedId, selectedPoId, onSelect, onStatusChange }: Props) {
   const [search, setSearch]             = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage]                 = useState(1);
-  const [decisions, setDecisions]       = useState<Record<string, Decision>>({});
-  const [confirmApprove, setConfirmApprove] = useState<string | null>(null);
-  const [decisionModal, setDecisionModal]   = useState<{ id: string; type: "review" | "reject" } | null>(null);
+  const [confirmApprove, setConfirmApprove] = useState<InvoiceData | null>(null);
+  const [decisionModal, setDecisionModal]   = useState<{ row: InvoiceData; type: "review" | "reject" } | null>(null);
 
   const filtered = useMemo(() => {
     setPage(1);
     return invoices.filter((inv) => {
       const matchSearch = !search ||
         inv.invoice_id.toLowerCase().includes(search.toLowerCase()) ||
-        inv.vendor.name.toLowerCase().includes(search.toLowerCase());
-      const matchStatus = statusFilter === "all" || inv.status === statusFilter;
+        inv.vendor?.name?.toLowerCase().includes(search.toLowerCase()) ||
+        (inv.po_id ?? "").toLowerCase().includes(search.toLowerCase());
+      const matchStatus = statusFilter === "all" || inv.matching_status === statusFilter;
       return matchSearch && matchStatus;
     });
   }, [invoices, search, statusFilter]);
@@ -95,28 +111,17 @@ export default function InvoiceList({ invoices, selectedId, onSelect, onStatusCh
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const paginated  = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
-  useEffect(() => {
-    paginated.forEach((inv) => {
-      if (!decisions[inv.invoice_id]) {
-        getInvoiceDecision(inv.invoice_id)
-          .then((res) => { if (res) setDecisions((prev) => ({ ...prev, [inv.invoice_id]: res })); })
-          .catch(() => {});
-      }
-    });
-  }, [paginated.map(i => i.invoice_id).join(",")]);
-
-  const handleApproveConfirmed = useCallback((invoiceId: string) => {
+  const handleApproveConfirmed = (row: InvoiceData) => {
     setConfirmApprove(null);
-    onStatusChange?.(invoiceId, "approved");
-  }, [onStatusChange]);
+    onStatusChange?.(row.invoice_id, row.po_id ?? null, "approved");
+  };
 
-  // Filter tabs — all 4 statuses
   const statusConfig = [
     { key: "all",      label: "All",      count: invoices.length },
-    { key: "approved", label: "Approved", count: invoices.filter(i => i.status === "approved").length },
-    { key: "pending",  label: "Pending",  count: invoices.filter(i => i.status === "pending").length  },
-    { key: "reviewed", label: "Reviewed", count: invoices.filter(i => i.status === "reviewed").length },
-    { key: "rejected", label: "Rejected", count: invoices.filter(i => i.status === "rejected").length },
+    { key: "approved", label: "Approved", count: invoices.filter(i => i.matching_status === "approved").length },
+    { key: "pending",  label: "Pending",  count: invoices.filter(i => i.matching_status === "pending").length  },
+    { key: "reviewed", label: "Reviewed", count: invoices.filter(i => i.matching_status === "reviewed").length },
+    { key: "rejected", label: "Rejected", count: invoices.filter(i => i.matching_status === "rejected").length },
   ];
 
   return (
@@ -125,7 +130,7 @@ export default function InvoiceList({ invoices, selectedId, onSelect, onStatusCh
         <div className="p-3 space-y-2.5 border-b border-gray-100 bg-gray-50/50">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
-            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search invoices…"
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search by invoice, vendor, PO…"
               className="w-full pl-8 pr-3 py-2 text-xs bg-white rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:border-blue-400 transition-all placeholder:text-gray-400" />
           </div>
           <div className="flex items-center gap-1 flex-wrap">
@@ -142,7 +147,7 @@ export default function InvoiceList({ invoices, selectedId, onSelect, onStatusCh
         </div>
 
         <div className="px-4 py-1.5 text-[11px] text-gray-400 border-b border-gray-100 bg-gray-50/30">
-          {filtered.length} invoice{filtered.length !== 1 ? "s" : ""} · page {page}/{totalPages}
+          {filtered.length} matching{filtered.length !== 1 ? "s" : ""} · page {page}/{totalPages}
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -150,18 +155,20 @@ export default function InvoiceList({ invoices, selectedId, onSelect, onStatusCh
             {paginated.length === 0 && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center justify-center py-16 text-gray-400">
                 <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center mb-2"><FileText className="w-5 h-5 opacity-40" /></div>
-                <p className="text-xs font-medium">No invoices found</p>
+                <p className="text-xs font-medium">No matchings found</p>
               </motion.div>
             )}
+
             {paginated.map((inv, idx) => {
-              const dec = decisions[inv.invoice_id];
-              const isSelected = selectedId === inv.invoice_id;
-              // Only show action buttons if invoice is still pending
-              const showActions = dec && inv.status === "pending";
+              const isSelected = selectedId === inv.invoice_id && selectedPoId === (inv.po_id ?? null);
+              const showActions = inv.matching_status === "pending";
 
               return (
-                <motion.div key={inv.invoice_id} layout initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ delay: idx * 0.025 }}
+                <motion.div key={`${inv.invoice_id}-${inv.po_id ?? "nopo"}`} layout
+                  initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                  transition={{ delay: idx * 0.025 }}
                   className={`border-b border-gray-50 transition-colors group ${isSelected ? "bg-blue-50 border-l-2 border-l-blue-500" : "hover:bg-gray-50/60"}`}>
+
                   <button onClick={() => onSelect(inv)} className="w-full text-left px-4 pt-3.5 pb-2">
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <div className="flex items-center gap-2 min-w-0">
@@ -170,38 +177,45 @@ export default function InvoiceList({ invoices, selectedId, onSelect, onStatusCh
                         </div>
                         <span className="text-xs font-bold text-gray-800 font-mono truncate">{inv.invoice_id}</span>
                       </div>
-                      {/* Always show actual invoice status */}
-                      <InvStatusBadge status={inv.status} />
+                      <MatchingStatusBadge status={inv.matching_status ?? "pending"} />
                     </div>
-                    <p className="text-xs text-gray-500 mb-1.5 ml-9 truncate">{inv.vendor.name}</p>
+
+                    <p className="text-xs text-gray-500 mb-1.5 ml-9 truncate">{inv.vendor?.name}</p>
+
                     <div className="flex items-center justify-between ml-9">
                       <span className="text-[11px] text-gray-400">{inv.invoice_date}</span>
                       <span className="text-xs font-bold text-gray-800">{formatCurrency(inv.total_amount, inv.currency_code)}</span>
                     </div>
-                    {inv.po_id && (
-                      <div className="ml-9 mt-1">
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-400">PO: {inv.po_id}</span>
-                      </div>
-                    )}
+
+                    <div className="ml-9 mt-1 flex items-center gap-1.5 flex-wrap">
+                      {inv.po_id && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 flex items-center gap-1">
+                          <LinkIcon className="w-2.5 h-2.5" />
+                          {inv.po_id}
+                        </span>
+                      )}
+                      {inv.po_id && !inv.is_po_matched && (
+                        <span className="text-[10px] font-semibold text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded">Not Matched</span>
+                      )}
+                    </div>
                   </button>
 
-                  {/* Action buttons — only when pending + decision exists */}
                   {showActions && (
                     <div className="px-4 pb-3 ml-9 flex items-center gap-1.5">
-                      {dec.status === "approve" && (
-                        <button onClick={(e) => { e.stopPropagation(); setConfirmApprove(inv.invoice_id); }}
+                      {inv.decision === "approve" && (
+                        <button onClick={(e) => { e.stopPropagation(); setConfirmApprove(inv); }}
                           className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">
                           <CheckCircle2 className="w-3 h-3" /> Approve
                         </button>
                       )}
-                      {dec.status === "review" && (
-                        <button onClick={(e) => { e.stopPropagation(); setDecisionModal({ id: inv.invoice_id, type: "review" }); }}
+                      {inv.decision === "review" && (
+                        <button onClick={(e) => { e.stopPropagation(); setDecisionModal({ row: inv, type: "review" }); }}
                           className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-amber-500 hover:bg-amber-600 text-white transition-colors">
                           <AlertTriangle className="w-3 h-3" /> Review
                         </button>
                       )}
-                      {dec.status === "reject" && (
-                        <button onClick={(e) => { e.stopPropagation(); setDecisionModal({ id: inv.invoice_id, type: "reject" }); }}
+                      {inv.decision === "reject" && (
+                        <button onClick={(e) => { e.stopPropagation(); setDecisionModal({ row: inv, type: "reject" }); }}
                           className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-md bg-red-500 hover:bg-red-600 text-white transition-colors">
                           <XCircle className="w-3 h-3" /> Reject
                         </button>
@@ -235,10 +249,23 @@ export default function InvoiceList({ invoices, selectedId, onSelect, onStatusCh
 
       <AnimatePresence>
         {confirmApprove && (
-          <ConfirmApproveModal invoiceId={confirmApprove} onConfirm={() => handleApproveConfirmed(confirmApprove)} onCancel={() => setConfirmApprove(null)} />
+          <ConfirmApproveModal
+            invoiceId={confirmApprove.invoice_id}
+            onConfirm={() => handleApproveConfirmed(confirmApprove)}
+            onCancel={() => setConfirmApprove(null)}
+          />
         )}
         {decisionModal && (
-          <DecisionDetailModal invoiceId={decisionModal.id} type={decisionModal.type} onClose={() => setDecisionModal(null)} onStatusChange={(invoiceId, newStatus) => onStatusChange?.(invoiceId, newStatus as "reviewed" | "rejected")} />
+          <DecisionDetailModal
+            invoiceId={decisionModal.row.invoice_id}
+            type={decisionModal.type}
+            invoiceRow={decisionModal.row}
+            onClose={() => setDecisionModal(null)}
+            onStatusChange={(invoiceId, newStatus) => {
+              onStatusChange?.(invoiceId, decisionModal.row.po_id ?? null, newStatus as "reviewed" | "rejected");
+              setDecisionModal(null);
+            }}
+          />
         )}
       </AnimatePresence>
     </>

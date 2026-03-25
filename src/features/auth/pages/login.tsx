@@ -21,7 +21,7 @@ function Login() {
     password: ""
   })
 
-  function handleChange(e: any) {
+  function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
       setFormData({...formData,[e.target.id]:e.target.value})
   }
 
@@ -106,7 +106,7 @@ function Login() {
             </div>
 
             {/* Submit */}
-            <button type="submit" className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 transition-all duration-150 shadow-sm hover:shadow-md mt-1">
+            <button type="submit" className="w-full py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 transition-all duration-150 shadow-sm hover:shadow-md mt-1 cursor-pointer">
               Sign in to PayU
             </button>
           </form>

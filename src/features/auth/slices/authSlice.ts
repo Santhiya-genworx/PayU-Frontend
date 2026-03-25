@@ -1,38 +1,48 @@
-import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import { getProfile, login as loginService, logout as logoutService } from "../services/authService";
 import type { User } from "../../../types/user";
 
-export const fetchUser = createAsyncThunk<User>(
+// Typed rejectWithValue shape
+interface RejectValue {
+  message: string;
+}
+
+export const fetchUser = createAsyncThunk<User, void, { rejectValue: RejectValue }>(
   "auth/fetchUser",
   async (_, { rejectWithValue }) => {
     try {
-      const user = await getProfile();
-      return user;
-    } catch (err: any) {
-      return rejectWithValue("Fetching user failed");
+      return await getProfile();
+    } catch {
+      return rejectWithValue({ message: "Fetching user failed" });
     }
   }
 );
 
-export const login = createAsyncThunk<User,{ email: string; password: string }>("auth/login", async (credentials, { rejectWithValue }) => {
-  try {
-    const response = await loginService(credentials);
-    return response.user;
-  } catch (err: any) {
-    return rejectWithValue(
-      err.response?.data?.message || "Login failed"
-    );
+export const login = createAsyncThunk<
+  User,                        // return type
+  { email: string; password: string }, // payload type
+  { rejectValue: RejectValue } // thunkAPI config
+>(
+  "auth/login",
+  async (credentials, { rejectWithValue }) => {
+    try {
+      const response = await loginService(credentials);
+      return response.user;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Login failed";
+      return rejectWithValue({ message });
+    }
   }
-});
+);
 
-export const logout = createAsyncThunk(
+export const logout = createAsyncThunk<true, void, { rejectValue: RejectValue }>(
   "auth/logout",
   async (_, { rejectWithValue }) => {
     try {
       await logoutService();
       return true;
-    } catch (err: any) {
-      return rejectWithValue("Logout failed");
+    } catch {
+      return rejectWithValue({ message: "Logout failed" });
     }
   }
 );
@@ -53,7 +63,7 @@ const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
-    setUser: (state, action) => {
+    setUser: (state, action: PayloadAction<User | null>) => {
       state.user = action.payload;
     },
     clearAuthState: (state) => {
@@ -64,7 +74,6 @@ const authSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-
       .addCase(fetchUser.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -76,7 +85,7 @@ const authSlice = createSlice({
       .addCase(fetchUser.rejected, (state, action) => {
         state.loading = false;
         state.user = null;
-        state.error = action.payload as string;
+        state.error = action.payload?.message ?? "Unknown error";
       })
 
       .addCase(login.pending, (state) => {
@@ -91,7 +100,7 @@ const authSlice = createSlice({
       .addCase(login.rejected, (state, action) => {
         state.loading = false;
         state.user = null;
-        state.error = action.payload as string;
+        state.error = action.payload?.message ?? "Unknown error";
       })
 
       .addCase(logout.pending, (state) => {
@@ -105,10 +114,10 @@ const authSlice = createSlice({
       .addCase(logout.rejected, (state, action) => {
         state.user = null;
         state.loading = false;
-        state.error = action.payload as string;
+        state.error = action.payload?.message ?? "Unknown error";
       });
   },
 });
 
-export const { setUser } = authSlice.actions;
+export const { setUser, clearAuthState } = authSlice.actions;
 export default authSlice.reducer;
