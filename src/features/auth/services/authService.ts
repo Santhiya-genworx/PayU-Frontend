@@ -2,7 +2,6 @@ import api from "../../../lib/axios";
 
 export const login = async (data: {email: string, password: string}) => {
     const response = await api.put("/auth/users/login",data,{withCredentials:true})
-    console.log(response)
     return response.data;
 }
 

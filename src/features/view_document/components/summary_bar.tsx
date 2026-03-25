@@ -3,7 +3,14 @@ function fmt(n: number, code = "INR") {
   return `${symbol} ${Number(n).toLocaleString("en-IN")}`;
 }
 
-function SummaryBar({ stats }: { stats: any }) {
+interface SummaryStats {
+  total_invoices: number;
+  total_pos: number;
+  invoice_value: number;
+  po_value: number;
+}
+
+function SummaryBar({ stats }: { stats: SummaryStats }) {
 
   const cards = [
     {

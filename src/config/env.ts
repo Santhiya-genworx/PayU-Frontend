@@ -1,1 +1,1 @@
-export const apiUrl = "https://payu-main-service-717740758627.us-east1.run.app";
+export const apiUrl = import.meta.env.VITE_API_URL;

@@ -2,7 +2,10 @@ import { useState, useEffect, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { Navigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { Receipt, Search, FileText, Package, Clock, CheckCircle, Upload, Trash2, Eye, XCircle } from "lucide-react";
+import {
+  Receipt, Search, FileText, Package, Clock, CheckCircle,
+  Upload, Trash2, Eye, XCircle, LinkIcon, CheckCircle2, AlertTriangle,
+} from "lucide-react";
 import { type AppDispatch, type RootState } from "../../../app/store";
 import { addFiles, updateFile, removeFile } from "../slices/dashboardSlice";
 import Sidebar from "../components/sidebar";
@@ -10,14 +13,20 @@ import UploadBox from "../components/upload_box";
 import InvoicePreviewModal from "../components/invoice_preview";
 import ProgressModal from "../components/progress_modal";
 import ConfirmationModal from "../components/confirmation_modal";
-import { extractInvoice, pollExtractionStatus, getDocumentCounts, submitInvoice, pollUploadStatus, overrideInvoice } from "../services/dashboardService";
-import { filterInvoices } from "../../view_document/services/documentService";
+import {
+  extractInvoice, pollExtractionStatus, getDocumentCounts,
+  submitInvoice, pollUploadStatus, overrideInvoice,
+} from "../services/dashboardService";
+import { getInvoiceMatchings } from "../../view_document/services/documentService";
 import type { ExtractedFile } from "../../../types/process";
 import type { InvoiceData } from "../../../types/invoice";
 import type { ToastState } from "../../../types/toast";
 import Toast from "../../../components/common/toast";
 import { fetchUser } from "../../auth/slices/authSlice";
 import { formatCurrency } from "../../../lib/formatCurrency";
+import { isApiError, type ApiError } from "../../../lib/apiError";
+import type { POData } from "../../../types/purchase_order";
+import logger from "../../../utils/logger";
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -26,11 +35,27 @@ function getGreeting(): string {
   return "Good evening";
 }
 
+function MatchingStatusBadge({ status }: { status: string }) {
+  const cfg: Record<string, { bg: string; text: string; dot: string; label: string }> = {
+    approved: { bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500", label: "Approved" },
+    pending:  { bg: "bg-amber-50",   text: "text-amber-700",   dot: "bg-amber-400",   label: "Pending"  },
+    reviewed: { bg: "bg-blue-50",    text: "text-blue-700",    dot: "bg-blue-500",    label: "Reviewed" },
+    rejected: { bg: "bg-red-50",     text: "text-red-700",     dot: "bg-red-500",     label: "Rejected" },
+  };
+  const c = cfg[status] ?? cfg["pending"];
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold ${c.bg} ${c.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${c.dot}`} />
+      {c.label}
+    </span>
+  );
+}
+
 export default function AssociateDashboard() {
-  const dispatch = useDispatch<AppDispatch>();
-  const user = useSelector((state: RootState) => state.auth.user);
+  const dispatch       = useDispatch<AppDispatch>();
+  const user           = useSelector((state: RootState) => state.auth.user);
   const extractedFiles = useSelector((state: RootState) => state.extraction.files);
-  const loading = useSelector((state: RootState) => state.auth.loading);
+  const loading        = useSelector((state: RootState) => state.auth.loading);
 
   const [authChecked, setAuthChecked]             = useState(false);
   const [toast, setToast]                         = useState<ToastState>({ visible: false, message: "", type: "info" });
@@ -40,31 +65,32 @@ export default function AssociateDashboard() {
   const [progressModalOpen, setProgressModalOpen] = useState(false);
   const [uploadsInProgress, setUploadsInProgress] = useState(false);
   const [confirmationFile, setConfirmationFile]   = useState<ExtractedFile | null>(null);
-  const [invoices, setInvoices]                   = useState<InvoiceData[]>([]);
-  const [invoicesLoading, setInvoicesLoading]     = useState(true);
-  const [selectedInvoice, setSelectedInvoice]     = useState<InvoiceData | null>(null);
-  const [searchQuery, setSearchQuery]             = useState("");
+
+  const [invoices, setInvoices]               = useState<InvoiceData[]>([]);
+  const [invoicesLoading, setInvoicesLoading] = useState(true);
+  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceData | null>(null);
+  const [searchQuery, setSearchQuery]         = useState("");
 
   const confirmOverrideRef = useRef<(() => void) | null>(null);
   const cancelOverrideRef  = useRef<(() => void) | null>(null);
 
-  const handleConfirmOverride = () => { setConfirmationFile(null); confirmOverrideRef.current?.(); };
-  const handleCancelOverride  = () => { setConfirmationFile(null); cancelOverrideRef.current?.();  };
+  const handleConfirmOverride      = () => { setConfirmationFile(null); confirmOverrideRef.current?.(); };
+  const handleCancelOverride       = () => { setConfirmationFile(null); cancelOverrideRef.current?.();  };
   const handleConfirmationRequired = (file: ExtractedFile) => { if (progressModalOpen) setConfirmationFile(file); };
 
   const fetchStats = async () => {
     try {
       const { total, approved, reviewed, rejected } = await getDocumentCounts();
       setStats({ total, approved, pending: reviewed, rejected });
-    } catch (err) { console.error(err); }
+    } catch (err) { logger.error(err); }
   };
 
   const fetchInvoices = async () => {
     try {
       setInvoicesLoading(true);
-      const data = await filterInvoices();
+      const data = await getInvoiceMatchings();
       setInvoices(data);
-    } catch (err) { console.error(err); }
+    } catch (err) { logger.error(err); }
     finally { setInvoicesLoading(false); }
   };
 
@@ -76,41 +102,47 @@ export default function AssociateDashboard() {
   }, [dispatch]);
 
   const handleUpload = async (files: File[]) => {
-    const newEntries: ExtractedFile[] = files.map((file) => ({
-      id: `${Date.now()}-${file.name}`,
-      fileName: file.name,
-      file,
-      type: "invoice",
-      extractedData: undefined,
-      status: "extracting",
-    }));
-    dispatch(addFiles(newEntries));
-    for (const entry of newEntries) {
-      const file = files.find((f) => f.name === entry.fileName)!;
-      try {
-        const fileId = await extractInvoice(file);
-        await pollExtractionStatus(fileId, (status, result, error) => {
-          if (status === "completed") {
-            const updated: ExtractedFile = { ...entry, extractedData: result, status: "done" };
-            dispatch(updateFile(updated));
-            setSelectedFile((cur) => cur?.id === entry.id ? updated : cur);
-          }
-          if (status === "failed") {
-            const errEntry: ExtractedFile = { ...entry, status: "error" };
-            dispatch(updateFile(errEntry));
-            setToast({ visible: true, message: error ?? "Extraction failed", type: "error" });
-          }
-        });
-      } catch (error: any) {
-        dispatch(updateFile({ ...entry, status: "error" }));
-        setToast({ visible: true, message: error?.response?.data?.message ?? error?.message ?? String(error), type: "error" });
-      }
-    }
-  };
+  const newEntries: ExtractedFile[] = files.map((file) => ({
+    id: `${Date.now()}-${file.name}`,
+    fileName: file.name,
+    file,
+    type: "invoice",
+    extractedData: undefined,
+    status: "extracting",
+  }));
+  dispatch(addFiles(newEntries));
 
+  for (const entry of newEntries) {
+    const file = files.find((f) => f.name === entry.fileName)!;
+    try {
+      const fileId = await extractInvoice(file);
+      await pollExtractionStatus(fileId, (status, result, error) => {
+        if (status === "completed") {
+          const updated: ExtractedFile = entry.type === "invoice"
+            ? { ...entry, extractedData: result as InvoiceData, status: "done" }
+            : { ...entry, extractedData: result as POData, status: "done" };
+          dispatch(updateFile(updated));
+          setSelectedFile((cur) => (cur?.id === entry.id ? updated : cur));
+        }
+        if (status === "failed") {
+          dispatch(updateFile({ ...entry, status: "error" }));
+          setToast({ visible: true, message: error ?? "Extraction failed", type: "error" });
+        }
+      });
+    } catch (err: unknown) {
+      const apiErr = isApiError(err) ? err : ({} as ApiError);
+      const responseData = apiErr.response?.data as { message?: string } | undefined; // ← type the response data
+      dispatch(updateFile({ ...entry, status: "error" }));
+      setToast({
+        visible: true,
+        message: responseData?.message ?? apiErr.message ?? String(err),
+        type: "error",
+      });
+    }
+  }
+};
   const handleSave = () => {
-    const filesToSave = extractedFiles.filter((f) => f.status === "done" && f.extractedData);
-    if (filesToSave.length === 0) return;
+    if (!extractedFiles.some((f) => f.status === "done" && f.extractedData)) return;
     setUploadsInProgress(true);
     setProgressModalOpen(true);
   };
@@ -134,20 +166,21 @@ export default function AssociateDashboard() {
   if (user.role !== "associate") return <Navigate to="/dashboard" />;
 
   const initials = user.name.split(" ").map((n: string) => n[0]).join("").toUpperCase();
-  const canSave = extractedFiles.some((f) => f.status === "done" && f.extractedData)
+  const canSave  = extractedFiles.some((f) => f.status === "done" && f.extractedData)
     && !extractedFiles.some((f) => f.status === "uploading" || f.status === "extracting");
 
-  const filteredInvoices = invoices.filter(inv =>
+  const filteredInvoices = invoices.filter((inv) =>
     searchQuery === "" ||
     inv.invoice_id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    inv.vendor?.name?.toLowerCase().includes(searchQuery.toLowerCase())
+    (inv.vendor?.name ?? "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (inv.po_id ?? "").toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const summaryCards = [
-    { label: "My Uploads",  value: stats.total,    icon: <FileText    className="w-4 h-4" />, color: "bg-blue-50 text-blue-600"      },
+    { label: "My Uploads",  value: stats.total,    icon: <FileText    className="w-4 h-4" />, color: "bg-blue-50 text-blue-600"       },
     { label: "Approved",    value: stats.approved, icon: <CheckCircle className="w-4 h-4" />, color: "bg-emerald-50 text-emerald-600" },
-    { label: "In Review",   value: stats.pending,  icon: <Clock       className="w-4 h-4" />, color: "bg-amber-50 text-amber-600"    },
-    { label: "Rejected",    value: stats.rejected, icon: <XCircle     className="w-4 h-4" />, color: "bg-red-50 text-red-600"        },
+    { label: "In Review",   value: stats.pending,  icon: <Clock       className="w-4 h-4" />, color: "bg-amber-50 text-amber-600"     },
+    { label: "Rejected",    value: stats.rejected, icon: <XCircle     className="w-4 h-4" />, color: "bg-red-50 text-red-600"         },
   ];
 
   return (
@@ -170,17 +203,16 @@ export default function AssociateDashboard() {
                 </div>
                 <div>
                   <h1 className="text-base font-bold text-gray-900">{getGreeting()}, {user.name.split(" ")[0]}</h1>
-                  <p className="text-xs text-gray-400">Upload invoices and track their status here.</p>
+                  <p className="text-xs text-gray-400">Upload invoices and track their matching status here.</p>
                 </div>
               </div>
             </div>
             <span className="text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-3 py-1 rounded-full">
-              {invoices.length} total
+              {invoices.length} matching{invoices.length !== 1 ? "s" : ""}
             </span>
           </div>
         </header>
 
-        {/* Scrollable content */}
         <main className="flex-1 overflow-y-auto">
           <div className="px-6 py-5 space-y-5">
 
@@ -234,8 +266,15 @@ export default function AssociateDashboard() {
                       {extractedFiles.map((ef) => {
                         const isConfirmRequired = ef.status === "confirmation_required";
                         return (
-                          <div key={ef.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-all group
-                              ${isConfirmRequired ? "border-orange-200 bg-orange-50/50" : selectedFile?.id === ef.id ? "border-blue-300 bg-blue-50/50" : "border-gray-100 hover:border-blue-200 bg-white"}`}>
+                          <div
+                            key={ef.id}
+                            className={`flex items-center gap-3 p-3 rounded-lg border transition-all group
+                              ${isConfirmRequired
+                                ? "border-orange-200 bg-orange-50/50"
+                                : selectedFile?.id === ef.id
+                                  ? "border-blue-300 bg-blue-50/50"
+                                  : "border-gray-100 hover:border-blue-200 bg-white"}`}
+                          >
                             <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 ${isConfirmRequired ? "bg-orange-100 text-orange-500" : "bg-blue-50 text-blue-600"}`}>
                               {ef.fileName.match(/\.(png|jpe?g|webp)$/i) ? "🖼️" : "📄"}
                             </div>
@@ -275,8 +314,11 @@ export default function AssociateDashboard() {
                       })}
                     </div>
                     <div className="pt-3 mt-2 border-t border-gray-100">
-                      <button onClick={handleSave} disabled={!canSave}
-                        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-lg transition-all">
+                      <button
+                        onClick={handleSave}
+                        disabled={!canSave}
+                        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-lg transition-all"
+                      >
                         {uploadsInProgress ? "Uploads in progress…" : "Save All Done Files"}
                       </button>
                     </div>
@@ -285,8 +327,9 @@ export default function AssociateDashboard() {
               </div>
             </div>
 
-            {/* Invoice List + Detail split layout */}
+            {/* Invoice Matching List + Detail split layout */}
             <div className="flex gap-4 h-[calc(100vh-490px)] min-h-80">
+
               {/* List */}
               <div className="w-96 shrink-0 bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-100 bg-blue-600">
@@ -295,7 +338,7 @@ export default function AssociateDashboard() {
                     <input
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search by invoice ID or vendor…"
+                      placeholder="Search invoice, vendor, PO…"
                       className="flex-1 bg-transparent text-sm text-white placeholder-white/50 outline-none"
                     />
                   </div>
@@ -305,27 +348,45 @@ export default function AssociateDashboard() {
                   {invoicesLoading ? (
                     <div className="flex items-center justify-center h-full text-sm text-gray-400">Loading…</div>
                   ) : filteredInvoices.length === 0 ? (
-                    <div className="flex items-center justify-center h-full text-sm text-gray-400">No invoices found</div>
+                    <div className="flex items-center justify-center h-full text-sm text-gray-400">No matchings found</div>
                   ) : (
-                    filteredInvoices.map((inv) => (
-                      <button
-                        key={inv.invoice_id}
-                        onClick={() => setSelectedInvoice((prev) => prev?.invoice_id === inv.invoice_id ? null : inv)}
-                        className={`w-full text-left px-4 py-3.5 border-b border-gray-50 transition-colors
-                          ${selectedInvoice?.invoice_id === inv.invoice_id ? "bg-blue-50 border-l-2 border-l-blue-500" : "hover:bg-gray-50/60"}`}
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
+                    filteredInvoices.map((inv) => {
+                      const isSelected =
+                        selectedInvoice?.invoice_id === inv.invoice_id &&
+                        (selectedInvoice?.po_id ?? null) === (inv.po_id ?? null);
+
+                      return (
+                        <button
+                          key={`${inv.invoice_id}-${inv.po_id ?? "nopo"}`}
+                          onClick={() => setSelectedInvoice((prev) =>
+                            prev?.invoice_id === inv.invoice_id && (prev?.po_id ?? null) === (inv.po_id ?? null)
+                              ? null : inv
+                          )}
+                          className={`w-full text-left px-4 py-3.5 border-b border-gray-50 transition-colors
+                            ${isSelected ? "bg-blue-50 border-l-2 border-l-blue-500" : "hover:bg-gray-50/60"}`}
+                        >
+                          <div className="flex items-start justify-between gap-2 mb-1">
                             <p className="text-xs font-semibold text-gray-800 font-mono truncate">{inv.invoice_id}</p>
-                            <p className="text-xs text-gray-500 truncate mt-0.5">{inv.vendor?.name}</p>
+                            <MatchingStatusBadge status={inv.matching_status ?? "pending"} />
                           </div>
-                          <div className="text-right shrink-0">
-                            <p className="text-xs font-bold text-gray-800">{formatCurrency(inv.total_amount, inv.currency_code)}</p>
-                            <p className="text-[10px] text-gray-400 mt-0.5">{inv.invoice_date}</p>
+                          <p className="text-xs text-gray-500 truncate mb-1">{inv.vendor?.name}</p>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[10px] text-gray-400">{inv.invoice_date}</span>
+                            <span className="text-xs font-bold text-gray-800">{formatCurrency(inv.total_amount, inv.currency_code)}</span>
                           </div>
-                        </div>
-                      </button>
-                    ))
+                          <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                            {inv.po_id && (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 flex items-center gap-1">
+                                <LinkIcon className="w-2.5 h-2.5" />{inv.po_id}
+                              </span>
+                            )}
+                            {inv.po_id && !inv.is_po_matched && (
+                              <span className="text-[10px] font-semibold text-orange-500 bg-orange-50 px-1.5 py-0.5 rounded">Not Matched</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -334,9 +395,13 @@ export default function AssociateDashboard() {
               <div className="flex-1 min-w-0">
                 <AnimatePresence mode="wait">
                   {selectedInvoice ? (
-                    <motion.div key={selectedInvoice.invoice_id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
-                      className="h-full bg-white rounded-xl border border-gray-100 shadow-sm overflow-auto">
-                      {/* Invoice Detail Header */}
+                    <motion.div
+                      key={`${selectedInvoice.invoice_id}-${selectedInvoice.po_id ?? "nopo"}`}
+                      initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="h-full bg-white rounded-xl border border-gray-100 shadow-sm overflow-auto"
+                    >
+                      {/* Detail Header */}
                       <div className="bg-blue-600 px-5 py-4">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
@@ -350,25 +415,71 @@ export default function AssociateDashboard() {
                           </div>
                           <button onClick={() => setSelectedInvoice(null)} className="w-6 h-6 rounded-md bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors text-xs">✕</button>
                         </div>
-                        <div className="mt-3 flex items-center gap-4">
+                        <div className="mt-3 flex items-center gap-4 flex-wrap">
                           <div>
                             <p className="text-xl font-bold text-white">{formatCurrency(selectedInvoice.total_amount, selectedInvoice.currency_code)}</p>
                             <p className="text-xs text-blue-200 mt-0.5">Invoice date: {selectedInvoice.invoice_date}</p>
                           </div>
+                          <MatchingStatusBadge status={selectedInvoice.matching_status ?? "pending"} />
                           {selectedInvoice.po_id && (
-                            <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-medium">PO: {selectedInvoice.po_id}</span>
+                            <span className="text-xs bg-white/20 text-white px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
+                              <LinkIcon className="w-3 h-3" />{selectedInvoice.po_id}
+                              {!selectedInvoice.is_po_matched && (
+                                <XCircle className="w-3 h-3 text-orange-300 ml-0.5" />
+                              )}
+                            </span>
                           )}
                         </div>
                       </div>
 
                       <div className="p-5 space-y-4">
+
+                        {/* AI Decision card */}
+                        {selectedInvoice.decision && (
+                          <div className={`rounded-lg border p-3 flex items-center justify-between
+                            ${selectedInvoice.decision === "approve" ? "bg-emerald-50 border-emerald-200"
+                            : selectedInvoice.decision === "review"  ? "bg-amber-50 border-amber-200"
+                            :                                          "bg-red-50 border-red-200"}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {selectedInvoice.decision === "approve" && <CheckCircle2 className="w-4 h-4 text-emerald-600" />}
+                              {selectedInvoice.decision === "review"  && <AlertTriangle className="w-4 h-4 text-amber-500" />}
+                              {selectedInvoice.decision === "reject"  && <XCircle       className="w-4 h-4 text-red-500"    />}
+                              <div>
+                                <p className={`text-xs font-bold
+                                  ${selectedInvoice.decision === "approve" ? "text-emerald-700"
+                                  : selectedInvoice.decision === "review"  ? "text-amber-700"
+                                  :                                          "text-red-700"}`}>
+                                  {selectedInvoice.decision === "approve" ? "Approved by AI"
+                                  : selectedInvoice.decision === "review" ? "Needs Review"
+                                  :                                         "Rejected by AI"}
+                                </p>
+                                {selectedInvoice.command && (
+                                  <p className="text-[11px] text-gray-500 mt-0.5 font-mono">{selectedInvoice.command}</p>
+                                )}
+                              </div>
+                            </div>
+                            {selectedInvoice.confidence_score != null && (
+                              <div className="text-right shrink-0">
+                                <p className="text-[11px] text-gray-400">Confidence</p>
+                                <p className={`text-sm font-bold
+                                  ${selectedInvoice.decision === "approve" ? "text-emerald-700"
+                                  : selectedInvoice.decision === "review"  ? "text-amber-700"
+                                  :                                          "text-red-700"}`}>
+                                  {Math.round(selectedInvoice.confidence_score * 100)}%
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Vendor Info */}
                         <div className="bg-gray-50 rounded-lg p-4">
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Vendor Details</p>
                           <div className="grid grid-cols-2 gap-3 text-xs">
                             <div><p className="text-gray-400">Name</p><p className="font-medium text-gray-800 mt-0.5">{selectedInvoice.vendor?.name}</p></div>
                             {selectedInvoice.vendor?.email         && <div><p className="text-gray-400">Email</p>  <p className="font-medium text-gray-800 mt-0.5">{selectedInvoice.vendor.email}</p></div>}
-                            {selectedInvoice.vendor?.mobile_number         && <div><p className="text-gray-400">Phone</p>  <p className="font-medium text-gray-800 mt-0.5">{selectedInvoice.vendor?.mobile_number}</p></div>}
+                            {selectedInvoice.vendor?.mobile_number && <div><p className="text-gray-400">Phone</p>  <p className="font-medium text-gray-800 mt-0.5">{selectedInvoice.vendor.mobile_number}</p></div>}
                             {selectedInvoice.vendor?.address       && <div><p className="text-gray-400">Address</p><p className="font-medium text-gray-800 mt-0.5">{selectedInvoice.vendor.address}</p></div>}
                           </div>
                         </div>
@@ -403,11 +514,15 @@ export default function AssociateDashboard() {
                             </div>
                           </div>
                         </div>
+
                       </div>
                     </motion.div>
                   ) : (
-                    <motion.div key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                      className="h-full flex flex-col items-center justify-center bg-white rounded-xl border border-gray-100 shadow-sm">
+                    <motion.div
+                      key="empty"
+                      initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                      className="h-full flex flex-col items-center justify-center bg-white rounded-xl border border-gray-100 shadow-sm"
+                    >
                       <div className="relative flex items-center justify-center mb-5">
                         <div className="absolute w-28 h-28 rounded-full bg-blue-50 opacity-60" />
                         <div className="absolute rounded-full bg-blue-100 opacity-60" style={{ width: 72, height: 72 }} />
@@ -415,10 +530,10 @@ export default function AssociateDashboard() {
                           <Receipt className="w-7 h-7 text-white" />
                         </div>
                       </div>
-                      <p className="text-sm font-semibold text-gray-700">Select an invoice to view details</p>
+                      <p className="text-sm font-semibold text-gray-700">Select a matching to view details</p>
                       <p className="text-xs text-gray-400 mt-1">Click any invoice from the list</p>
                       <div className="flex flex-wrap items-center justify-center gap-2 mt-5 max-w-xs">
-                        {["Invoice Details", "Vendor Info", "Line Items", "File Preview", "Upload History"].map((f) => (
+                        {["Invoice Details", "Vendor Info", "Line Items", "PO Matching", "AI Decision"].map((f) => (
                           <span key={f} className="text-xs text-gray-400 bg-gray-100 px-2.5 py-1 rounded-full">{f}</span>
                         ))}
                       </div>
@@ -472,7 +587,13 @@ export default function AssociateDashboard() {
         />
       )}
 
-      {toast.visible && <Toast message={toast.message} type={toast.type} onClose={() => setToast({ visible: false, message: "", type: "info" })} />}
+      {toast.visible && (
+        <Toast
+          message={toast.message}
+          type={toast.type}
+          onClose={() => setToast({ visible: false, message: "", type: "info" })}
+        />
+      )}
     </div>
   );
 }
