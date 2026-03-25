@@ -5,13 +5,28 @@ export const filterInvoices = async (search?: string) => {
   return response.data;
 };
 
+// ── NEW: fetch InvoiceMatching rows (decision + status embedded) ──────────────
+// Returns list of InvoiceMatching joined with invoice data.
+// Each row has: invoice_id, po_id, is_po_matched, status (MatchingStatus),
+// decision (DecisionStatus), confidence_score, command, mail_to, mail_subject,
+// mail_body, plus invoice fields (vendor, invoice_items, dates, amounts etc.)
+export const getInvoiceMatchings = async (search?: string) => {
+  const response = await api.get("process/documents/invoice-matchings", { params: { search }, withCredentials: true });
+  return response.data;
+};
+
 export const filterPurchaseOrders = async (search?: string) => {
   const response = await api.get("process/documents/purchase-orders/filter", { params: { search }, withCredentials: true });
   return response.data;
 };
 
-export const getDocumentStats = async () => {
-  const response = await api.get("process/documents/stats", { withCredentials: true });
+export const getInvoiceStats = async () => {
+  const response = await api.get("process/documents/invoice/stats", { withCredentials: true });
+  return response.data;
+};
+
+export const getPurchaseOrderStats = async () => {
+  const response = await api.get("process/documents/purchase-order/stats", { withCredentials: true });
   return response.data;
 };
 

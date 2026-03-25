@@ -19,13 +19,38 @@ import {
   FileText, CheckCircle, Clock, XCircle, Users, TrendingUp,
   ShoppingCart, Receipt, Activity, UserPlus, BarChart2,
 } from "lucide-react";
+import logger from "../../../utils/logger";
 
 type DocStatus = "approved" | "pending" | "reviewed" | "rejected";
-type DocType = "Invoice" | "Purchase Order";
 
 interface ActivityRow {
-  id: number; file: string; type: DocType;
-  total_amount: string; status: DocStatus; date: string;
+  id: number;
+  invoice_id: string;
+  po_id: string | null;
+  status: DocStatus;
+  is_po_matched: boolean;
+  total_amount: string;
+  date: string;
+}
+
+// Raw shape returned by getRecentActivity() before formatting
+interface RawActivityItem {
+  invoice_id: string;
+  po_id?: string | null;
+  status?: string;
+  is_po_matched?: boolean;
+  total_amount: string | number;
+  invoice_date?: string;
+}
+
+// Axios-style error shape
+interface ApiError {
+  response?: { data?: { message?: string } };
+  message?: string;
+}
+
+function isApiError(err: unknown): err is ApiError {
+  return typeof err === "object" && err !== null;
 }
 
 function getGreeting(): string {
@@ -38,9 +63,9 @@ function getGreeting(): string {
 function StatusBadge({ status }: { status: DocStatus }) {
   const cfg: Record<DocStatus, string> = {
     approved: "bg-emerald-50 text-emerald-700 border border-emerald-100",
-    pending: "bg-amber-50 text-amber-700 border border-amber-100",
-    reviewed:  "bg-blue-50 text-blue-700 border border-blue-100",
-    rejected:  "bg-red-50 text-red-700 border border-red-100",
+    pending:  "bg-amber-50 text-amber-700 border border-amber-100",
+    reviewed: "bg-blue-50 text-blue-700 border border-blue-100",
+    rejected: "bg-red-50 text-red-700 border border-red-100",
   };
   const labels: Record<DocStatus, string> = { approved: "Approved", pending: "Pending", reviewed: "Reviewed", rejected: "Rejected" };
   return (
@@ -50,7 +75,12 @@ function StatusBadge({ status }: { status: DocStatus }) {
   );
 }
 
-const COLORS = ["#2563eb", "#10b981", "#f59e0b", "#ef4444"];
+const STATUS_COLORS: Record<string, string> = {
+  Approved: "#10b981",
+  Pending:  "#f59e0b",
+  Reviewed: "#2563eb",
+  Rejected: "#ef4444",
+};
 
 export default function AdminDashboard() {
   const dispatch = useDispatch<AppDispatch>();
@@ -71,25 +101,23 @@ export default function AdminDashboard() {
     try {
       const { total, approved, pending, reviewed, rejected } = await getDocumentCounts();
       setStats({ total, approved, pending, reviewed, rejected });
-    } catch (err) { console.error(err); }
+    } catch (err) { logger.error(err); }
   };
 
   const fetchActivity = async () => {
     try {
       const data = await getRecentActivity();
-      const formatted: ActivityRow[] = data.map((item: any, index: number) => {
-        const isInvoice = "invoice_id" in item;
-        return {
-          id: index,
-          file: isInvoice ? item.invoice_id : item.po_id,
-          type: isInvoice ? "Invoice" : "Purchase Order",
-          total_amount: `₹ ${Number(item.total_amount).toLocaleString("en-IN")}`,
-          status: (item.status ?? "pending") as DocStatus,
-          date: isInvoice ? item.invoice_date : item.ordered_date,
-        };
-      });
+      const formatted: ActivityRow[] = (data as RawActivityItem[]).map((item, index) => ({
+        id:            index,
+        invoice_id:    item.invoice_id,
+        po_id:         item.po_id ?? null,
+        status:        (item.status ?? "pending") as DocStatus,
+        is_po_matched: !!item.is_po_matched,
+        total_amount:  `₹ ${Number(item.total_amount).toLocaleString("en-IN")}`,
+        date:          item.invoice_date ?? "",
+      }));
       setRecentActivity(formatted);
-    } catch (err) { console.error(err); }
+    } catch (err) { logger.error(err); }
   };
 
   const fetchChartData = async () => {
@@ -102,7 +130,7 @@ export default function AdminDashboard() {
       setMonthlyVolume(volumeData);
       setMonthlyAmount(amountData);
       setQuickStats(qStats);
-    } catch (err) { console.error(err); }
+    } catch (err) { logger.error(err); }
   };
 
   useEffect(() => {
@@ -117,8 +145,10 @@ export default function AdminDashboard() {
     try {
       await createUser(data);
       setToast({ visible: true, message: `User "${data.name}" added successfully!`, type: "success" });
-    } catch (error: any) {
-      setToast({ visible: true, message: error?.response?.data?.message ?? "Adding user failed!", type: "error" });
+    } catch (err: unknown) {
+      const apiErr = isApiError(err) ? err : {};
+      const message = (apiErr as ApiError).response?.data?.message ?? "Adding user failed!";
+      setToast({ visible: true, message, type: "error" });
     }
   };
 
@@ -138,17 +168,17 @@ export default function AdminDashboard() {
 
   const pieData = [
     { name: "Approved", value: stats.approved },
-    { name: "Pending", value: stats.pending },
+    { name: "Pending",  value: stats.pending  },
     { name: "Reviewed", value: stats.reviewed },
     { name: "Rejected", value: stats.rejected },
   ].filter(d => d.value > 0);
 
   const statCards = [
-    { label: "Total Documents", value: stats.total, icon: <FileText className="w-5 h-5" />, light: "bg-blue-50 text-blue-600" },
-    { label: "Approved", value: stats.approved, icon: <CheckCircle className="w-5 h-5" />, light: "bg-emerald-50 text-emerald-600" },
-    { label: "Pending", value: stats.pending, icon: <Clock className="w-5 h-5" />, light: "bg-amber-50 text-amber-600" },
-    { label: "Reviewed", value: stats.reviewed, icon: <Clock className="w-5 h-5" />, light: "bg-blue-50 text-blue-500" },
-    { label: "Rejected", value: stats.rejected, icon: <XCircle className="w-5 h-5" />, light: "bg-red-50 text-red-600" },
+    { label: "Total Documents", value: stats.total,    icon: <FileText className="w-5 h-5" />,     light: "bg-blue-50 text-blue-600"    },
+    { label: "Approved",        value: stats.approved, icon: <CheckCircle className="w-5 h-5" />,  light: "bg-emerald-50 text-emerald-600" },
+    { label: "Pending",         value: stats.pending,  icon: <Clock className="w-5 h-5" />,        light: "bg-amber-50 text-amber-600"  },
+    { label: "Reviewed",        value: stats.reviewed, icon: <Clock className="w-5 h-5" />,        light: "bg-blue-50 text-blue-500"    },
+    { label: "Rejected",        value: stats.rejected, icon: <XCircle className="w-5 h-5" />,      light: "bg-red-50 text-red-600"      },
   ];
 
   return (
@@ -210,7 +240,6 @@ export default function AdminDashboard() {
 
           {/* Charts Row */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            {/* Bar Chart - Document volume */}
             <div className="lg:col-span-2 bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -234,7 +263,6 @@ export default function AdminDashboard() {
               </ResponsiveContainer>
             </div>
 
-            {/* Pie Chart - Status distribution */}
             <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
               <div className="mb-4">
                 <h3 className="text-sm font-semibold text-gray-800">Status Distribution</h3>
@@ -244,8 +272,8 @@ export default function AdminDashboard() {
                 <ResponsiveContainer width="100%" height={200}>
                   <PieChart>
                     <Pie data={pieData} cx="50%" cy="45%" innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value">
-                      {pieData.map((_, index) => (
-                        <Cell key={index} fill={COLORS[index]} />
+                      {pieData.map((entry) => (
+                        <Cell key={entry.name} fill={STATUS_COLORS[entry.name] ?? "#6b7280"} />
                       ))}
                     </Pie>
                     <Legend iconSize={10} iconType="circle" wrapperStyle={{ fontSize: 11 }} />
@@ -258,7 +286,7 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Area chart - Amount trend */}
+          {/* Area chart */}
           <div className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm">
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -280,10 +308,10 @@ export default function AdminDashboard() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
                 <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${(v/1000).toFixed(0)}k`} />
+                <YAxis tick={{ fontSize: 11, fill: "#9ca3af" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => `₹${(v / 1000).toFixed(0)}k`} />
                 <Tooltip
                   contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e5e7eb" }}
-                  formatter={(v: any) => [`₹${Number(v).toLocaleString("en-IN")}`, "Amount"]}
+                  formatter={(v) => v != null ? [`₹${Number(v).toLocaleString("en-IN")}`, "Amount"] : ["—", "Amount"]}
                 />
                 <Area type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={2} fill="url(#amountGrad)" dot={{ fill: "#2563eb", r: 3 }} />
               </AreaChart>
@@ -325,8 +353,8 @@ export default function AdminDashboard() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100">
-                    <th className="pb-2.5 text-left text-xs font-medium text-gray-400">Document ID</th>
-                    <th className="pb-2.5 text-left text-xs font-medium text-gray-400">Type</th>
+                    <th className="pb-2.5 text-left text-xs font-medium text-gray-400">Invoice ID</th>
+                    <th className="pb-2.5 text-left text-xs font-medium text-gray-400">PO Linked</th>
                     <th className="pb-2.5 text-left text-xs font-medium text-gray-400">Amount</th>
                     <th className="pb-2.5 text-left text-xs font-medium text-gray-400">Status</th>
                     <th className="pb-2.5 text-left text-xs font-medium text-gray-400">Date</th>
@@ -338,11 +366,13 @@ export default function AdminDashboard() {
                   )}
                   {recentActivity.map((row) => (
                     <tr key={row.id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="py-3 font-medium text-gray-700 text-xs font-mono">{row.file}</td>
+                      <td className="py-3 font-medium text-gray-700 text-xs font-mono">{row.invoice_id}</td>
                       <td className="py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-md font-medium ${row.type === "Invoice" ? "bg-blue-50 text-blue-600" : "bg-violet-50 text-violet-600"}`}>
-                          {row.type}
-                        </span>
+                        {row.po_id ? (
+                          <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-violet-50 text-violet-700 font-medium">{row.po_id}</span>
+                        ) : (
+                          <span className="text-xs text-gray-300 italic">No PO</span>
+                        )}
                       </td>
                       <td className="py-3 text-gray-700 font-medium text-xs">{row.total_amount}</td>
                       <td className="py-3"><StatusBadge status={row.status} /></td>

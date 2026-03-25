@@ -2,18 +2,20 @@ import { useEffect, useState, useRef } from "react";
 import { useDispatch } from "react-redux";
 import { removeFile, clearFiles, setFilesUploading, updateFile } from "../slices/dashboardSlice";
 import type { ExtractedFile } from "../../../types/process";
+import type { InvoiceData } from "../../../types/invoice";
+import type { POData } from "../../../types/purchase_order";
 
-interface ProgressModalProps {
+interface ProgressModalProps<T extends InvoiceData | POData> {
   files: ExtractedFile[];
-  submitFn: (data: any, file: File) => Promise<{ file_id: string }>;
-  overrideFn: (data: any, file: File) => Promise<{ file_id: string }>;
+  submitFn:  (data: T, file: File) => Promise<{ file_id: string }>;
+  overrideFn:(data: T, file: File) => Promise<{ file_id: string }>;
   pollFn: (fileId: string) => Promise<{ status: string; error?: string }>;
   onClose: () => void;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
   onConfirmationRequired: (file: ExtractedFile) => void;
   confirmOverrideRef: React.MutableRefObject<(() => void) | null>;
-  cancelOverrideRef: React.MutableRefObject<(() => void) | null>;
+  cancelOverrideRef:  React.MutableRefObject<(() => void) | null>;
   onAllDone: () => void;
 }
 
@@ -26,14 +28,28 @@ interface FileStatus {
   error?: string;
 }
 
-export default function ProgressModal({files, submitFn, overrideFn, pollFn, onClose, onError, onSuccess, onConfirmationRequired, confirmOverrideRef, cancelOverrideRef, onAllDone}: ProgressModalProps) {
+// Axios-style error shape returned by the API layer
+interface ApiError {
+  response?: { status?: number };
+  message?: string;
+}
+
+function isApiError(err: unknown): err is ApiError {
+  return typeof err === "object" && err !== null;
+}
+
+export default function ProgressModal<T extends InvoiceData | POData>({
+  files, submitFn, overrideFn, pollFn,
+  onClose, onError, onSuccess,
+  onConfirmationRequired, confirmOverrideRef, cancelOverrideRef, onAllDone,
+}: ProgressModalProps<T>) {
   const dispatch = useDispatch();
 
   const [fileStatuses, setFileStatuses] = useState<FileStatus[]>(
     files.map((f) => ({ id: f.id, fileName: f.fileName, status: "pending" }))
   );
   const [progress, setProgress] = useState(0);
-  const [done, setDone] = useState(false);
+  const [done, setDone]         = useState(false);
 
   const gateRef = useRef<((confirmed: boolean) => void) | null>(null);
 
@@ -50,7 +66,7 @@ export default function ProgressModal({files, submitFn, overrideFn, pollFn, onCl
       const check = async () => {
         try {
           const res = await pollFn(file_id);
-          if (res.status === "processing") setTimeout(check, 3000);
+          if (res.status === "processing")  setTimeout(check, 3000);
           else if (res.status === "completed") resolve();
           else reject(new Error(res.error ?? "Upload failed"));
         } catch (err) { reject(err); }
@@ -64,14 +80,19 @@ export default function ProgressModal({files, submitFn, overrideFn, pollFn, onCl
 
     try {
       const fn = override ? overrideFn : submitFn;
-      const { file_id } = await fn(file.extractedData, file.file);
+      // The caller guarantees extractedData matches T (invoice page passes
+      // InvoiceData, PO page passes POData) — cast is safe at this boundary.
+      const { file_id } = await fn(file.extractedData as T, file.file);
       await pollProcessing(file_id);
 
       setStatus(file.id, "success");
       onSuccess(`${file.fileName} saved successfully`);
       dispatch(removeFile(file.id));
-    } catch (err: any) {
-      const isDuplicate = err?.response?.status === 409 || (err?.message as string)?.startsWith("409:");
+    } catch (err: unknown) {
+      const apiErr = isApiError(err) ? err : {};
+      const isDuplicate =
+        apiErr.response?.status === 409 ||
+        apiErr.message?.startsWith("409:");
 
       if (isDuplicate) {
         dispatch(updateFile({ ...file, status: "confirmation_required" } as ExtractedFile));
@@ -89,7 +110,7 @@ export default function ProgressModal({files, submitFn, overrideFn, pollFn, onCl
         return;
       }
 
-      const message = err?.message ?? "Unknown error";
+      const message = apiErr.message ?? "Unknown error";
       setStatus(file.id, "error", message);
       onError(`${file.fileName}: ${message}`);
       dispatch(updateFile({ ...file, status: "error" }));
@@ -125,8 +146,11 @@ export default function ProgressModal({files, submitFn, overrideFn, pollFn, onCl
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4">
-          <h3 className="text-base font-semibold text-gray-800">{done ? allSuccess ? "All files saved!" : hasError ? "Some files failed" : "Done" : "Saving files…"}</h3>
-          <button onClick={onClose} title="Close — uploads continue in background" className="text-gray-400 hover:text-gray-600 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-lg leading-none" >✕</button>
+          <h3 className="text-base font-semibold text-gray-800">
+            {done ? allSuccess ? "All files saved!" : hasError ? "Some files failed" : "Done" : "Saving files…"}
+          </h3>
+          <button onClick={onClose} title="Close — uploads continue in background"
+            className="text-gray-400 hover:text-gray-600 transition-colors w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-lg leading-none">✕</button>
         </div>
 
         {/* Progress bar */}

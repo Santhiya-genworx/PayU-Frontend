@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { Navigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { ShoppingCart, Search, FileText, Package, DollarSign, Clock, CheckCircle, Upload, Trash2, Eye } from "lucide-react";
+import { ShoppingCart, Search, FileText, Package, Clock, CheckCircle, Upload, Trash2, Eye, IndianRupee } from "lucide-react";
+import type { AxiosError } from "axios";
 import { type AppDispatch, type RootState } from "../../../app/store";
 import { addFiles, updateFile, removeFile } from "../../dashboard/slices/dashboardSlice";
 import Sidebar from "../../dashboard/components/sidebar";
@@ -11,13 +12,29 @@ import PurchaseOrderPreviewModal from "../../dashboard/components/purchase_order
 import ProgressModal from "../../dashboard/components/progress_modal";
 import ConfirmationModal from "../../dashboard/components/confirmation_modal";
 import { fetchUser } from "../../auth/slices/authSlice";
-import { filterPurchaseOrders, getDocumentStats } from "../services/documentService";
+import { filterPurchaseOrders, getPurchaseOrderStats } from "../services/documentService";
 import { extractPurchaseOrder, pollExtractionStatus, submitPurchaseOrder, pollUploadStatus, overridePurchaseOrder } from "../../dashboard/services/dashboardService";
 import type { ExtractedFile } from "../../../types/process";
 import type { POData } from "../../../types/purchase_order";
 import type { ToastState } from "../../../types/toast";
 import Toast from "../../../components/common/toast";
 import { formatCurrency } from "../../../lib/formatCurrency";
+import logger from "../../../utils/logger";
+
+interface POStats {
+  total_pos: number;
+  pending: number;
+  completed: number;
+  cancelled: number;
+  total_value: number;
+}
+
+interface ApiErrorResponse {
+  message?: string;
+}
+
+// Narrow alias for the PO branch of the ExtractedFile discriminated union
+type ExtractedPOFile = Extract<ExtractedFile, { type: "po" }>;
 
 export default function PurchaseOrders() {
   const dispatch = useDispatch<AppDispatch>();
@@ -28,7 +45,7 @@ export default function PurchaseOrders() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [orders, setOrders] = useState<POData[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<POData | null>(null);
-  const [stats, setStats] = useState<any>(null);
+  const [stats, setStats] = useState<POStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedFile, setSelectedFile] = useState<ExtractedFile | null>(null);
   const [progressModalOpen, setProgressModalOpen] = useState(false);
@@ -44,29 +61,30 @@ export default function PurchaseOrders() {
   const handleCancelOverride  = () => { setConfirmationFile(null); cancelOverrideRef.current?.();  };
   const handleConfirmationRequired = (file: ExtractedFile) => { if (progressModalOpen) setConfirmationFile(file); };
 
+  const fetchData = async () => {
+    try {
+      const [poData, statsData] = await Promise.all([filterPurchaseOrders(), getPurchaseOrderStats()]);
+      setOrders(poData);
+      setStats(statsData);
+    } catch (err) { logger.error(err); }
+    finally { setLoading(false); }
+  };
+
   useEffect(() => {
     const init = async () => { await dispatch(fetchUser()); setAuthChecked(true); };
     init();
-
-    const fetchData = async () => {
-      try {
-        const [poData, statsData] = await Promise.all([filterPurchaseOrders(), getDocumentStats()]);
-        setOrders(poData);
-        setStats(statsData);
-      } catch (err) { console.error(err); }
-      finally { setLoading(false); }
-    };
     fetchData();
   }, [dispatch]);
 
   const handleUpload = async (files: File[]) => {
-    const newEntries: ExtractedFile[] = files.map((file) => ({
+    // Narrowed to the `po` branch so the discriminated union resolves correctly
+    const newEntries: ExtractedPOFile[] = files.map((file) => ({
       id: `${Date.now()}-${file.name}`,
       fileName: file.name,
       file,
-      type: "po",
+      type: "po" as const,
       extractedData: undefined,
-      status: "extracting",
+      status: "extracting" as const,
     }));
 
     dispatch(addFiles(newEntries));
@@ -77,19 +95,24 @@ export default function PurchaseOrders() {
         const fileId = await extractPurchaseOrder(file);
         await pollExtractionStatus(fileId, (status, result, error) => {
           if (status === "completed") {
-            const updated: ExtractedFile = { ...entry, extractedData: result, status: "done" };
+            const updated: ExtractedPOFile = {
+              ...entry,
+              extractedData: result as POData,
+              status: "done",
+            };
             dispatch(updateFile(updated));
             setSelectedFile((cur) => cur?.id === entry.id ? updated : cur);
           }
           if (status === "failed") {
-            const errEntry: ExtractedFile = { ...entry, status: "error" };
+            const errEntry: ExtractedPOFile = { ...entry, status: "error" };
             dispatch(updateFile(errEntry));
             setToast({ visible: true, message: error ?? "Extraction failed", type: "error" });
           }
         });
-      } catch (error: any) {
+      } catch (error: unknown) {
         dispatch(updateFile({ ...entry, status: "error" }));
-        setToast({ visible: true, message: error?.response?.data?.message ?? error?.message ?? String(error), type: "error" });
+        const axiosErr = error as AxiosError<ApiErrorResponse>;
+        setToast({ visible: true, message: axiosErr?.response?.data?.message ?? axiosErr?.message ?? String(error), type: "error" });
       }
     }
   };
@@ -115,10 +138,11 @@ export default function PurchaseOrders() {
   );
 
   const summaryCards = [
-    { label: "Total POs", value: stats?.total_documents ?? 0, icon: <FileText className="w-4 h-4" />, color: "bg-blue-50 text-blue-600" },
-    { label: "Approved", value: stats?.approved ?? 0, icon: <CheckCircle className="w-4 h-4" />, color: "bg-emerald-50 text-emerald-600" },
-    { label: "In Review", value: stats?.pending ?? 0, icon: <Clock className="w-4 h-4" />, color: "bg-amber-50 text-amber-600"    },
-    { label: "Total Value", value: `₹${((stats?.total_amount ?? 0) / 100000).toFixed(1)}L`,  icon: <DollarSign  className="w-4 h-4" />, color: "bg-violet-50 text-violet-600"  },
+    { label: "Total POs",     value: stats?.total_pos ?? 0,                    icon: <FileText      className="w-4 h-4" />, color: "bg-blue-50 text-blue-600"     },
+    { label: "Pending",       value: stats?.pending ?? 0,                      icon: <Clock         className="w-4 h-4" />, color: "bg-amber-50 text-amber-600"   },
+    { label: "Completed",     value: stats?.completed ?? 0,                    icon: <CheckCircle   className="w-4 h-4" />, color: "bg-emerald-50 text-emerald-600"},
+    { label: "Cancelled",     value: stats?.cancelled ?? 0,                    icon: <Clock         className="w-4 h-4" />, color: "bg-red-50 text-red-600"       },
+    { label: "Orders Value",  value: formatCurrency(stats?.total_value ?? 0),  icon: <IndianRupee   className="w-4 h-4" />, color: "bg-blue-50 text-blue-600"     },
   ];
 
   return (
@@ -145,9 +169,7 @@ export default function PurchaseOrders() {
                 </div>
               </div>
             </div>
-            <span className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-100 px-3 py-1 rounded-full">
-              {orders.length} total
-            </span>
+            <span className="text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-100 px-3 py-1 rounded-full">{orders.length} total</span>
           </div>
         </header>
 
@@ -155,7 +177,7 @@ export default function PurchaseOrders() {
         <main className="flex-1 overflow-y-auto">
           <div className="px-6 py-5 space-y-5">
             {/* Summary Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
               {summaryCards.map((card) => (
                 <div key={card.label} className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
                   <div className="flex items-center justify-between mb-2">
@@ -169,14 +191,7 @@ export default function PurchaseOrders() {
 
             {/* Upload + Extracted Files Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <UploadBox
-                type="Purchase Order"
-                accentClass="border-t-violet-600"
-                iconBg="bg-violet-50 text-violet-600"
-                icon="📋"
-                accept=".pdf,.png,.jpg,.jpeg,.docx"
-                onUpload={handleUpload}
-              />
+              <UploadBox type="Purchase Order" accentClass="border-t-violet-600" iconBg="bg-violet-50 text-violet-600" icon="📋" accept=".pdf,.png,.jpg,.jpeg,.docx" onUpload={handleUpload} />
 
               <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col min-h-52">
                 <div className="flex items-center justify-between mb-3">
@@ -206,9 +221,7 @@ export default function PurchaseOrders() {
                         return (
                           <div key={ef.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-all group
                               ${isConfirmRequired ? "border-orange-200 bg-orange-50/50" : selectedFile?.id === ef.id ? "border-violet-300 bg-violet-50/50" : "border-gray-100 hover:border-violet-200 bg-white"}`}>
-                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 ${isConfirmRequired ? "bg-orange-100 text-orange-500" : "bg-violet-50 text-violet-600"}`}>
-                              📋
-                            </div>
+                            <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm shrink-0 ${isConfirmRequired ? "bg-orange-100 text-orange-500" : "bg-violet-50 text-violet-600"}`}>📋</div>
                             <div className="flex-1 min-w-0">
                               <p className="text-xs font-medium text-gray-700 truncate">{ef.fileName}</p>
                               <p className="text-xs mt-0.5">
@@ -232,10 +245,7 @@ export default function PurchaseOrders() {
                                 </>
                               )}
                               {!isConfirmRequired && ef.status !== "extracting" && ef.status !== "uploading" && (
-                                <button
-                                  onClick={() => { dispatch(removeFile(ef.id)); if (selectedFile?.id === ef.id) setSelectedFile(null); }}
-                                  className="p-1.5 rounded-md text-gray-300 hover:text-red-400 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all"
-                                >
+                                <button onClick={() => { dispatch(removeFile(ef.id)); if (selectedFile?.id === ef.id) setSelectedFile(null); }} className="p-1.5 rounded-md text-gray-300 hover:text-red-400 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all">
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                               )}
@@ -245,8 +255,7 @@ export default function PurchaseOrders() {
                       })}
                     </div>
                     <div className="pt-3 mt-2 border-t border-gray-100">
-                      <button onClick={handleSave} disabled={!canSave}
-                        className="w-full bg-violet-600 hover:bg-violet-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-lg transition-all">
+                      <button onClick={handleSave} disabled={!canSave} className="w-full bg-violet-600 hover:bg-violet-700 disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed text-white text-sm font-medium py-2 rounded-lg transition-all">
                         {uploadsInProgress ? "Uploads in progress…" : "Save All Done Files"}
                       </button>
                     </div>
@@ -262,12 +271,7 @@ export default function PurchaseOrders() {
                 <div className="px-4 py-3 border-b border-gray-100 bg-violet-600">
                   <div className="flex items-center gap-2 bg-white/10 px-3 py-2 rounded-lg">
                     <Search className="w-3.5 h-3.5 text-white/70" />
-                    <input
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Search by PO ID or vendor…"
-                      className="flex-1 bg-transparent text-sm text-white placeholder-white/50 outline-none"
-                    />
+                    <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search by PO ID or vendor…" className="flex-1 bg-transparent text-sm text-white placeholder-white/50 outline-none" />
                   </div>
                 </div>
 
@@ -306,7 +310,6 @@ export default function PurchaseOrders() {
                   {selectedOrder ? (
                     <motion.div key={selectedOrder.po_id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}
                       className="h-full bg-white rounded-xl border border-gray-100 shadow-sm overflow-auto">
-                      {/* PO Detail Header */}
                       <div className="bg-violet-600 px-5 py-4">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-3">
@@ -332,7 +335,6 @@ export default function PurchaseOrders() {
                       </div>
 
                       <div className="p-5 space-y-4">
-                        {/* Vendor Info */}
                         <div className="bg-gray-50 rounded-lg p-4">
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Vendor Details</p>
                           <div className="grid grid-cols-2 gap-3 text-xs">
@@ -343,7 +345,6 @@ export default function PurchaseOrders() {
                           </div>
                         </div>
 
-                        {/* Line Items */}
                         <div>
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Ordered Items</p>
                           <div className="bg-white rounded-lg border border-gray-100 overflow-hidden">
@@ -401,7 +402,6 @@ export default function PurchaseOrders() {
         </main>
       </div>
 
-      {/* Modals */}
       {selectedFile && (
         <PurchaseOrderPreviewModal
           file={selectedFile}
@@ -418,7 +418,7 @@ export default function PurchaseOrders() {
             overrideFn={overridePurchaseOrder}
             pollFn={pollUploadStatus}
             onClose={() => setProgressModalOpen(false)}
-            onSuccess={async (msg) => { setToast({ visible: true, message: msg, type: "success" }); }}
+            onSuccess={async (msg) => { setToast({ visible: true, message: msg, type: "success" }); await fetchData(); }}
             onError={(msg) => setToast({ visible: true, message: msg, type: "error" })}
             onConfirmationRequired={handleConfirmationRequired}
             confirmOverrideRef={confirmOverrideRef}

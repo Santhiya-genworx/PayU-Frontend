@@ -6,8 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.11.2",

@@ -5,6 +5,7 @@ import {
   CheckCircle2, AlertTriangle, XCircle, Sparkles, Mail, Shield,
   ChevronDown, Send,
 } from "lucide-react";
+import type { AxiosError } from "axios";
 import type { InvoiceData, Decision } from "../../../types/invoice";
 import InvoiceStatusBadge from "./status_badge";
 import { formatCurrency } from "../../../lib/formatCurrency";
@@ -13,15 +14,49 @@ import InvoiceVendorTab from "./vendor_tab";
 import InvoiceFileTab from "./file_tab";
 import InvoiceHistoryTab from "./history_tab";
 import { getInvoiceDecision, approveInvoice, reviewInvoice, rejectInvoice } from "../services/documentService";
+import logger from "../../../utils/logger";
 
 type Tab = "details" | "vendor" | "file" | "history" | "result";
 
-// ── Shared Review/Reject Modal (list design) ──────────────────────────────────
-export function DecisionDetailModal({ invoiceId, type, onClose, onStatusChange }: {
+// ── Allowed values for InvoiceStatusBadge.status ─────────────────────────────
+// Mirrors the accepted union in status_badge.tsx — extend if that type grows
+type MatchingStatus = "pending" | "approved" | "reviewed" | "rejected";
+
+function toMatchingStatus(value: string | undefined | null): MatchingStatus {
+  const allowed: MatchingStatus[] = ["pending", "approved", "reviewed", "rejected"];
+  return allowed.includes(value as MatchingStatus) ? (value as MatchingStatus) : "pending";
+}
+
+// ── Typed error helper ────────────────────────────────────────────────────────
+interface ApiErrorResponse {
+  message?: string;
+}
+
+function extractErrorMessage(err: unknown, fallback: string): string {
+  const axiosErr = err as AxiosError<ApiErrorResponse>;
+  return axiosErr?.response?.data?.message ?? axiosErr?.message ?? fallback;
+}
+
+// ── Build Decision from InvoiceMatching row directly ─────────────────────────
+function matchingToDecision(invoice: InvoiceData): Decision | null {
+  if (!invoice.decision) return null;
+  return {
+    status:           invoice.decision,
+    confidence_score: invoice.confidence_score ?? 0,
+    command:          invoice.command ?? "",
+    mail_to:          invoice.mail_to ?? "",
+    mail_subject:     invoice.mail_subject ?? "",
+    mail_body:        invoice.mail_body ?? "",
+  };
+}
+
+// ── Shared Review/Reject Modal ────────────────────────────────────────────────
+export function DecisionDetailModal({ invoiceId, type, onClose, onStatusChange, invoiceRow }: {
   invoiceId: string;
   type: "review" | "reject";
   onClose: () => void;
   onStatusChange?: (invoiceId: string, newStatus: "reviewed" | "rejected") => void;
+  invoiceRow?: InvoiceData;
 }) {
   const [decision, setDecision]   = useState<Decision | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -32,25 +67,34 @@ export function DecisionDetailModal({ invoiceId, type, onClose, onStatusChange }
   const [sent, setSent]           = useState(false);
   const [sendError, setSendError] = useState("");
   const [showMail, setShowMail]   = useState(false);
-
-  // track originals to detect edits
   const [origTo, setOrigTo]           = useState("");
   const [origSubject, setOrigSubject] = useState("");
   const [origBody, setOrigBody]       = useState("");
 
   useEffect(() => {
+    if (invoiceRow) {
+      const d = matchingToDecision(invoiceRow);
+      setDecision(d);
+      const t = d?.mail_to ?? "";
+      const s = d?.mail_subject ?? "";
+      const b = d?.mail_body ?? "";
+      setTo(t); setSubject(s); setBody(b);
+      setOrigTo(t); setOrigSubject(s); setOrigBody(b);
+      setLoading(false);
+      return;
+    }
+
     getInvoiceDecision(invoiceId).then((res) => {
       setDecision(res);
       const t = res?.mail_to ?? ""; const s = res?.mail_subject ?? ""; const b = res?.mail_body ?? "";
       setTo(t); setSubject(s); setBody(b);
       setOrigTo(t); setOrigSubject(s); setOrigBody(b);
-    }).catch(console.error).finally(() => setLoading(false));
-  }, [invoiceId]);
+    }).catch(logger.error).finally(() => setLoading(false));
+  }, [invoiceId, invoiceRow]);
 
   const handleSend = async () => {
     setSending(true); setSendError("");
     try {
-      // Only pass overrides if edited
       const overrides: Record<string, string> = {};
       if (to !== origTo)           overrides.mail_to      = to;
       if (subject !== origSubject) overrides.mail_subject = subject;
@@ -62,9 +106,11 @@ export function DecisionDetailModal({ invoiceId, type, onClose, onStatusChange }
       setSent(true);
       onStatusChange?.(invoiceId, type === "review" ? "reviewed" : "rejected");
       setTimeout(() => { setSent(false); setShowMail(false); onClose(); }, 1800);
+    } catch (err: unknown) {
+      setSendError(extractErrorMessage(err, "Failed."));
+    } finally {
+      setSending(false);
     }
-    catch (err: any) { setSendError(err?.response?.data?.message ?? err?.message ?? "Failed."); }
-    finally { setSending(false); }
   };
 
   const cfg = type === "review"
@@ -92,7 +138,12 @@ export function DecisionDetailModal({ invoiceId, type, onClose, onStatusChange }
             <>
               <div className={`rounded-lg border ${cfg.border} ${cfg.bg} px-4 py-3 flex items-center justify-between`}>
                 <div className="flex items-center gap-2">{cfg.icon}<p className={`text-sm font-semibold ${cfg.text}`}>{cfg.label}</p></div>
-                {decision && <div className="text-right"><p className="text-[11px] text-gray-400">Confidence</p><p className={`text-sm font-bold ${cfg.text}`}>{Math.round((decision.confidence_score ?? 0) * 100)}%</p></div>}
+                {decision && (
+                  <div className="text-right">
+                    <p className="text-[11px] text-gray-400">Confidence</p>
+                    <p className={`text-sm font-bold ${cfg.text}`}>{decision.confidence_score}%</p>
+                  </div>
+                )}
               </div>
 
               {decision?.command && (
@@ -166,8 +217,13 @@ function ConfirmApproveModal({ invoiceId, onConfirm, onCancel }: {
 
   const handleConfirm = async () => {
     setLoading(true); setError("");
-    try { await approveInvoice(invoiceId); onConfirm(); }
-    catch (err: any) { setError(err?.response?.data?.message ?? err?.message ?? "Approval failed."); setLoading(false); }
+    try {
+      await approveInvoice(invoiceId);
+      onConfirm();
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err, "Approval failed."));
+      setLoading(false);
+    }
   };
 
   return (
@@ -194,12 +250,13 @@ function ConfirmApproveModal({ invoiceId, onConfirm, onCancel }: {
 }
 
 // ── Result Tab ────────────────────────────────────────────────────────────────
-function ResultTab({ decision: initialDecision, invoiceStatus, invoiceId, onStatusChange }: {
-  decision: Decision; invoiceStatus: string; invoiceId: string;
-  onStatusChange?: (invoiceId: string, newStatus: "approved" | "reviewed" | "rejected") => void;
+function ResultTab({ decision: initialDecision, matchingStatus, invoiceId, onStatusChange }: {
+  decision: Decision;
+  matchingStatus: string;
+  invoiceId: string;
+  onStatusChange?: (invoiceId: string, poId: string | null, newStatus: "approved" | "reviewed" | "rejected") => void;
 }) {
   const [decision, setDecision]       = useState<Decision>(initialDecision);
-  const [command, setCommand]         = useState(initialDecision.command ?? "");
   const [mailTo, setMailTo]           = useState(initialDecision.mail_to ?? "");
   const [mailSubject, setMailSubject] = useState(initialDecision.mail_subject ?? "");
   const [mailBody, setMailBody]       = useState(initialDecision.mail_body ?? "");
@@ -208,10 +265,8 @@ function ResultTab({ decision: initialDecision, invoiceStatus, invoiceId, onStat
   const [submitError, setSubmitError] = useState("");
   const [submitted, setSubmitted]     = useState(false);
 
-  // originals to detect edits
   const orig = { to: initialDecision.mail_to ?? "", subject: initialDecision.mail_subject ?? "", body: initialDecision.mail_body ?? "" };
-
-  const confidencePct = Math.round((decision.confidence_score ?? 0) * 100);
+  const confidencePct = decision.confidence_score;
 
   const statusCfg: Record<string, { icon: React.ReactNode; label: string; bg: string; border: string; text: string; bar: string }> = {
     approve: { icon: <CheckCircle2 className="w-5 h-5 text-emerald-600" />, label: "Approved",    bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", bar: "bg-emerald-500" },
@@ -230,19 +285,19 @@ function ResultTab({ decision: initialDecision, invoiceStatus, invoiceId, onStat
 
       if (decision.status === "approve") {
         await approveInvoice(invoiceId);
-        onStatusChange?.(invoiceId, "approved");
+        onStatusChange?.(invoiceId, null, "approved");
       } else if (decision.status === "review") {
         await reviewInvoice(invoiceId, overrides);
-        onStatusChange?.(invoiceId, "reviewed");
+        onStatusChange?.(invoiceId, null, "reviewed");
       } else if (decision.status === "reject") {
         await rejectInvoice(invoiceId, overrides);
-        onStatusChange?.(invoiceId, "rejected");
+        onStatusChange?.(invoiceId, null, "rejected");
       }
       setSubmitted(true);
       setShowChangeStatus(false);
       setTimeout(() => setSubmitted(false), 2000);
-    } catch (err: any) {
-      setSubmitError(err?.response?.data?.message ?? err?.message ?? "Action failed.");
+    } catch (err: unknown) {
+      setSubmitError(extractErrorMessage(err, "Action failed."));
     } finally {
       setSubmitting(false);
     }
@@ -270,13 +325,11 @@ function ResultTab({ decision: initialDecision, invoiceStatus, invoiceId, onStat
         </div>
       </div>
 
-      {/* Change Status — only when invoice is pending */}
-      {invoiceStatus === "pending" && (
+      {/* Change Status — only when matching is still pending */}
+      {matchingStatus === "pending" && (
         <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
-          <button
-            onClick={() => setShowChangeStatus(!showChangeStatus)}
-            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors"
-          >
+          <button onClick={() => setShowChangeStatus(!showChangeStatus)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors">
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 rounded-md bg-blue-50 flex items-center justify-center">
                 <ChevronDown className={`w-3.5 h-3.5 text-blue-600 transition-transform ${showChangeStatus ? "rotate-180" : ""}`} />
@@ -288,7 +341,6 @@ function ResultTab({ decision: initialDecision, invoiceStatus, invoiceId, onStat
 
           {showChangeStatus && (
             <div className="border-t border-gray-100 px-4 py-3 space-y-3">
-              {/* Status selector */}
               <div>
                 <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Select Action</p>
                 <div className="flex items-center gap-2">
@@ -307,12 +359,6 @@ function ResultTab({ decision: initialDecision, invoiceStatus, invoiceId, onStat
                 </div>
               </div>
 
-              {/* Editable fields */}
-              <div>
-                <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1">Command</label>
-                <textarea value={command} onChange={(e) => setCommand(e.target.value)} rows={3}
-                  className="w-full px-3 py-2 text-xs font-mono rounded-lg border border-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-300 focus:border-blue-400 transition-all resize-none" />
-              </div>
               <div>
                 <label className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider block mb-1">Mail To</label>
                 <input value={mailTo} onChange={(e) => setMailTo(e.target.value)}
@@ -362,18 +408,18 @@ function ResultTab({ decision: initialDecision, invoiceStatus, invoiceId, onStat
             <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Vendor Notification</p>
           </div>
           <div className="px-4 py-3 space-y-3">
-            {initialDecision.mail_to && <div><p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">To</p><p className="text-xs font-medium text-gray-800">{initialDecision.mail_to}</p></div>}
+            {initialDecision.mail_to      && <div><p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">To</p><p className="text-xs font-medium text-gray-800">{initialDecision.mail_to}</p></div>}
             {initialDecision.mail_subject && <div><p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Subject</p><p className="text-xs text-gray-700">{initialDecision.mail_subject}</p></div>}
-            {initialDecision.mail_body && <div><p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Message</p><p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap bg-gray-50 rounded-lg p-3 border border-gray-100">{initialDecision.mail_body}</p></div>}
+            {initialDecision.mail_body    && <div><p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Message</p><p className="text-xs text-gray-600 leading-relaxed whitespace-pre-wrap bg-gray-50 rounded-lg p-3 border border-gray-100">{initialDecision.mail_body}</p></div>}
           </div>
         </div>
       )}
 
-      {/* Invoice Status */}
+      {/* Matching status */}
       <div className="bg-white rounded-xl border border-gray-100 p-4">
-        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Invoice Status</p>
-        <InvoiceStatusBadge status={invoiceStatus as any} />
-        {invoiceStatus !== "pending" && (
+        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-2">Matching Status</p>
+        <InvoiceStatusBadge status={toMatchingStatus(matchingStatus)} />
+        {matchingStatus !== "pending" && (
           <p className="text-[11px] text-gray-400 mt-2">Action has been taken on this invoice.</p>
         )}
       </div>
@@ -385,23 +431,15 @@ function ResultTab({ decision: initialDecision, invoiceStatus, invoiceId, onStat
 export default function InvoiceDetailPanel({
   invoice, onClose, onStatusChange,
 }: {
-  invoice: InvoiceData; onClose: () => void;
-  onStatusChange?: (invoiceId: string, newStatus: "approved" | "reviewed" | "rejected") => void;
+  invoice: InvoiceData;
+  onClose: () => void;
+  onStatusChange?: (invoiceId: string, poId: string | null, newStatus: "approved" | "reviewed" | "rejected") => void;
 }) {
-  const [activeTab, setActiveTab]             = useState<Tab>("details");
-  const [decision, setDecision]               = useState<Decision | null>(null);
-  const [decisionLoading, setDecisionLoading] = useState(true);
-  const [confirmApprove, setConfirmApprove]   = useState(false);
-  const [decisionModal, setDecisionModal]     = useState<"review" | "reject" | null>(null);
+  const [activeTab, setActiveTab]           = useState<Tab>("details");
+  const [confirmApprove, setConfirmApprove] = useState(false);
+  const [decisionModal, setDecisionModal]   = useState<"review" | "reject" | null>(null);
 
-  useEffect(() => {
-    setDecisionLoading(true);
-    getInvoiceDecision(invoice.invoice_id)
-      .then((res) => { if (res) setDecision(res); })
-      .catch(() => {})
-      .finally(() => setDecisionLoading(false));
-  }, [invoice.invoice_id]);
-
+  const decision = matchingToDecision(invoice);
   const showResultTab = decision !== null;
 
   const baseTabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
@@ -418,10 +456,7 @@ export default function InvoiceDetailPanel({
   const handleActionDone = (newStatus: "approved" | "reviewed" | "rejected") => {
     setConfirmApprove(false);
     setDecisionModal(null);
-    onStatusChange?.(invoice.invoice_id, newStatus);
-    getInvoiceDecision(invoice.invoice_id)
-      .then((res) => { if (res) setDecision(res); })
-      .catch(() => {});
+    onStatusChange?.(invoice.invoice_id, invoice.po_id ?? null, newStatus);
     setActiveTab("result");
   };
 
@@ -438,7 +473,7 @@ export default function InvoiceDetailPanel({
               </div>
               <div>
                 <h2 className="text-sm font-bold text-white font-mono">{invoice.invoice_id}</h2>
-                <p className="text-xs text-blue-200 mt-0.5 truncate max-w-48">{invoice.vendor.name}</p>
+                <p className="text-xs text-blue-200 mt-0.5 truncate max-w-48">{invoice.vendor?.name}</p>
               </div>
             </div>
             <button onClick={onClose} className="w-7 h-7 rounded-lg bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors shrink-0">
@@ -449,12 +484,15 @@ export default function InvoiceDetailPanel({
           <div className="flex items-center justify-between mb-3">
             <div>
               <p className="text-xl font-bold text-white tabular-nums">{formatCurrency(invoice.total_amount, invoice.currency_code)}</p>
-              <p className="text-xs text-blue-200 mt-0.5">{invoice.invoice_date}</p>
+              <p className="text-xs text-blue-200 mt-0.5">
+                {invoice.invoice_date}
+                {invoice.po_id && <span className="ml-2 font-mono opacity-75">· {invoice.po_id}</span>}
+              </p>
             </div>
-            <InvoiceStatusBadge status={invoice.status} />
+            <InvoiceStatusBadge status={toMatchingStatus(invoice.matching_status)} />
           </div>
 
-          {!decisionLoading && decision && invoice.status === "pending" && (
+          {decision && invoice.matching_status === "pending" && (
             <div className="flex items-center gap-2">
               {decision.status === "approve" && (
                 <button onClick={() => setConfirmApprove(true)}
@@ -483,11 +521,11 @@ export default function InvoiceDetailPanel({
             <button key={tab.key} onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-1.5 px-3 py-3 text-xs font-semibold border-b-2 transition-all whitespace-nowrap mx-0.5
                 ${activeTab === tab.key
-                  ? tab.key === "result" ? "border-violet-500 text-violet-600 bg-violet-50/50 rounded-t-lg" : "border-blue-500 text-blue-600 bg-blue-50/50 rounded-t-lg"
+                  ? "border-blue-500 text-blue-600 bg-blue-50/50 rounded-t-lg"
                   : "border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}>
               {tab.icon}{tab.label}
               {tab.key === "result" && activeTab !== "result" && (
-                <span className="w-1.5 h-1.5 rounded-full bg-violet-500 ml-0.5" />
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 ml-0.5" />
               )}
             </button>
           ))}
@@ -502,7 +540,7 @@ export default function InvoiceDetailPanel({
             {activeTab === "result"  && decision && (
               <ResultTab
                 decision={decision}
-                invoiceStatus={invoice.status}
+                matchingStatus={invoice.matching_status ?? "pending"}
                 invoiceId={invoice.invoice_id}
                 onStatusChange={onStatusChange}
               />
@@ -523,6 +561,7 @@ export default function InvoiceDetailPanel({
           <DecisionDetailModal
             invoiceId={invoice.invoice_id}
             type={decisionModal}
+            invoiceRow={invoice}
             onClose={() => setDecisionModal(null)}
             onStatusChange={(_, newStatus) => handleActionDone(newStatus as "reviewed" | "rejected")}
           />

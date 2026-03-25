@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Upload, Loader2, FileText, Clock, ArrowRight } from "lucide-react";
 import { getInvoiceUploadHistory } from "../services/documentService";
+import logger from "../../../utils/logger";
 
 interface UploadHistory {
   id: number;
@@ -30,7 +31,7 @@ export default function InvoiceHistoryTab({ invoiceId }: { invoiceId: string }) 
         const data = await getInvoiceUploadHistory(invoiceId);
         setHistory(data || []);
       } catch (error) {
-        console.error("Failed to fetch upload history:", error);
+        logger.error("Failed to fetch upload history:", error);
       } finally {
         setLoading(false);
       }
