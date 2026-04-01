@@ -141,7 +141,7 @@ export default function InvoiceStatusTab({ invoiceId }: { invoiceId: string }) {
         const res = await getInvoiceDecision(invoiceId);
         setDecision(res);
       } catch (err) {
-        lo.error(err);
+        console.error(err);
       } finally {
         setLoading(false);
       }
