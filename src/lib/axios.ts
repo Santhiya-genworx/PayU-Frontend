@@ -1,8 +1,8 @@
 import axios from "axios";
-import { apiUrl } from "../config/env";
 
+const url ="https://payu-main-service-717740758627.us-east1.run.app";
 const api = axios.create({
-  baseURL: apiUrl,
+  baseURL: url,
   withCredentials: true,
 });
 
