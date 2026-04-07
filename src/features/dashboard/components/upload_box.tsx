@@ -9,7 +9,7 @@ interface UploadProps {
   onUpload?: (files: File[]) => void;
 }
 
-function UploadBox({ type, accentClass, iconBg, icon, accept, onUpload }: UploadProps) {
+function UploadBox({ accentClass, accept, onUpload }: UploadProps) {
   const [dragging, setDragging] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -39,14 +39,7 @@ function UploadBox({ type, accentClass, iconBg, icon, accept, onUpload }: Upload
   };
 
   return (
-    <div className={`bg-white rounded-xl shadow-sm border-t-4 ${accentClass} p-5 flex flex-col gap-3`}>
-      <div className="flex items-center gap-3">
-        <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl ${iconBg}`}>{icon}</div>
-        <div>
-          <p className="font-semibold text-gray-800 text-sm">{type}</p>
-          <p className="text-xs text-gray-400">Upload {type.toLowerCase()} files</p>
-        </div>
-      </div>
+    <div className={`${accentClass} p-5 flex flex-col gap-3`}>
 
       <div onDragOver={(e) => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={handleDrop}
         onClick={() => inputRef.current?.click()} className={`border-2 border-dashed rounded-lg p-5 flex flex-col items-center justify-center cursor-pointer transition-colors
