@@ -100,7 +100,7 @@ export default function InvoiceList({ invoices, selectedId, selectedPoId, onSele
     setPage(1);
     return invoices.filter((inv) => {
       const matchSearch = !search ||
-        inv.invoice_id.toLowerCase().includes(search.toLowerCase()) ||
+        inv.invoice_id?.toLowerCase().includes(search.toLowerCase()) ||
         inv.vendor?.name?.toLowerCase().includes(search.toLowerCase()) ||
         (inv.po_id ?? "").toLowerCase().includes(search.toLowerCase());
       const matchStatus = statusFilter === "all" || inv.matching_status === statusFilter;
@@ -113,7 +113,7 @@ export default function InvoiceList({ invoices, selectedId, selectedPoId, onSele
 
   const handleApproveConfirmed = (row: InvoiceData) => {
     setConfirmApprove(null);
-    onStatusChange?.(row.invoice_id, row.po_id ?? null, "approved");
+    onStatusChange?.(row.invoice_id ?? "", row.po_id ?? null, "approved");
   };
 
   const statusConfig = [
@@ -184,7 +184,7 @@ export default function InvoiceList({ invoices, selectedId, selectedPoId, onSele
 
                     <div className="flex items-center justify-between ml-9">
                       <span className="text-[11px] text-gray-400">{inv.invoice_date}</span>
-                      <span className="text-xs font-bold text-gray-800">{formatCurrency(inv.total_amount, inv.currency_code)}</span>
+                      <span className="text-xs font-bold text-gray-800">{formatCurrency(inv.total_amount ?? 0, inv.currency_code ?? "INR")}</span>
                     </div>
 
                     <div className="ml-9 mt-1 flex items-center gap-1.5 flex-wrap">
@@ -250,14 +250,14 @@ export default function InvoiceList({ invoices, selectedId, selectedPoId, onSele
       <AnimatePresence>
         {confirmApprove && (
           <ConfirmApproveModal
-            invoiceId={confirmApprove.invoice_id}
+            invoiceId={confirmApprove.invoice_id ?? ""}
             onConfirm={() => handleApproveConfirmed(confirmApprove)}
             onCancel={() => setConfirmApprove(null)}
           />
         )}
         {decisionModal && (
           <DecisionDetailModal
-            invoiceId={decisionModal.row.invoice_id}
+            invoiceId={decisionModal.row.invoice_id ?? ""}
             type={decisionModal.type}
             invoiceRow={decisionModal.row}
             onClose={() => setDecisionModal(null)}

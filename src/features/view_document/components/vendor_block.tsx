@@ -2,16 +2,16 @@ import type { InvoiceData } from "../../../types/invoice";
 
 function VendorBlock({ vendor }: { vendor: InvoiceData["vendor"] }) {
   const rows: { label: string; value: string; full?: boolean }[] = [
-    { label: "Name", value: vendor.name },
-    { label: "Email", value: vendor.email },
-    { label: "Mobile", value: vendor.mobile_number },
-    { label: "GST No.", value: vendor.gst_number },
-    { label: "Country", value: vendor.country_code },
-    { label: "Bank", value: vendor.bank_name },
-    { label: "Account Holder", value: vendor.account_holder_name },
-    { label: "Account No.", value: vendor.account_number },
-    { label: "IFSC", value: vendor.ifsc_code },
-    { label: "Address", value: vendor.address, full: true },
+    { label: "Name", value: vendor?.name ?? "—" },
+    { label: "Email", value: vendor?.email ?? "—" },
+    { label: "Mobile", value: vendor?.mobile_number ?? "—" },
+    { label: "GST No.", value: vendor?.gst_number ?? "—" },
+    { label: "Country", value: vendor?.country_code ?? "—" },
+    { label: "Bank", value: vendor?.bank_name ?? "—" },
+    { label: "Account Holder", value: vendor?.account_holder_name ?? "—" },
+    { label: "Account No.", value: vendor?.account_number ?? "—" },
+    { label: "IFSC", value: vendor?.ifsc_code ?? "—" },
+    { label: "Address", value: vendor?.address ?? "—", full: true },
   ];
   return (
     <div>

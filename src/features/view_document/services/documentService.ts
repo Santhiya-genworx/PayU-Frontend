@@ -5,11 +5,7 @@ export const filterInvoices = async (search?: string) => {
   return response.data;
 };
 
-// ── NEW: fetch InvoiceMatching rows (decision + status embedded) ──────────────
-// Returns list of InvoiceMatching joined with invoice data.
-// Each row has: invoice_id, po_id, is_po_matched, status (MatchingStatus),
-// decision (DecisionStatus), confidence_score, command, mail_to, mail_subject,
-// mail_body, plus invoice fields (vendor, invoice_items, dates, amounts etc.)
+// ── Fetch InvoiceMatching groups (new group-based schema) ────────────────────
 export const getInvoiceMatchings = async (search?: string) => {
   const response = await api.get("process/documents/invoice-matchings", { params: { search }, withCredentials: true });
   return response.data;
@@ -45,17 +41,34 @@ export const getInvoiceDecision = async (invoice_id: string) => {
   return response.data;
 };
 
+// ── Invoice actions — now accept invoice_id (first in group) OR group_id ─────
+// The backend resolves by looking up the matching group containing invoice_id.
 export const approveInvoice = async (invoice_id: string) => {
   const response = await api.put("process/invoice/approve", { invoice_id }, { withCredentials: true });
   return response.data;
 };
 
-export const reviewInvoice = async (invoice_id: string, overrides?: { mail_to?: string; mail_subject?: string; mail_body?: string }) => {
+export const reviewInvoice = async (
+  invoice_id: string,
+  overrides?: { mail_to?: string; mail_subject?: string; mail_body?: string }
+) => {
   const response = await api.put("process/invoice/review", { invoice_id, ...overrides }, { withCredentials: true });
   return response.data;
 };
 
-export const rejectInvoice = async (invoice_id: string, overrides?: { mail_to?: string; mail_subject?: string; mail_body?: string }) => {
+export const rejectInvoice = async (
+  invoice_id: string,
+  overrides?: { mail_to?: string; mail_subject?: string; mail_body?: string }
+) => {
   const response = await api.put("process/invoice/reject", { invoice_id, ...overrides }, { withCredentials: true });
+  return response.data;
+};
+
+// ── Manually trigger LLM validation for a matching group ─────────────────────
+export const triggerGroupValidation = async (group_id: number, type: string = "new") => {
+  const response = await api.post(`process/match/group/${group_id}`, null, {
+    params: { type },
+    withCredentials: true,
+  });
   return response.data;
 };

@@ -153,7 +153,7 @@ export default function InvoicePreviewModal({ file, onClose, onUpdate }: Invoice
   const setItem = (i: number, key: keyof InvoiceItem, val: string) => {
     setForm((prev) => {
       const items = structuredClone(prev.invoice_items);
-      const item = items[i] as Record<keyof InvoiceItem, unknown>;
+      const item = items?.[i] as Record<keyof InvoiceItem, unknown>;
       item[key] = numericItemFields.has(key) ? Number(val) : val;
       return { ...prev, invoice_items: items };
     });
@@ -162,7 +162,7 @@ export default function InvoicePreviewModal({ file, onClose, onUpdate }: Invoice
   const removeItem = (i: number) => {
     setForm((prev) => ({
       ...prev,
-      invoice_items: prev.invoice_items.filter((_, idx) => idx !== i),
+      invoice_items: prev.invoice_items?.filter((_, idx) => idx !== i),
     }));
   };
 
@@ -197,33 +197,33 @@ export default function InvoicePreviewModal({ file, onClose, onUpdate }: Invoice
 
             <SectionTitle title="Invoice Info" />
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Invoice ID" value={form.invoice_id} onChange={(v) => set("invoice_id", v)} />
+              <Field label="Invoice ID" value={form.invoice_id ?? ""} onChange={(v) => set("invoice_id", v)} />
               <div className="col-span-1">
                 <Field label="PO ID(s) — comma separated" value={form.po_id ?? ""} onChange={(v) => set("po_id", v)} />
               </div>
-              <Field label="Invoice Date" value={form.invoice_date} type="date" onChange={(v) => set("invoice_date", v)} />
-              <Field label="Due Date" value={form.due_date} type="date" onChange={(v) => set("due_date", v)} />
+              <Field label="Invoice Date" value={form.invoice_date ?? ""} type="date" onChange={(v) => set("invoice_date", v)} />
+              <Field label="Due Date" value={form.due_date ?? ""} type="date" onChange={(v) => set("due_date", v)} />
             </div>
 
             <SectionTitle title="Vendor Details" />
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Vendor Name" value={form.vendor.name} onChange={(v) => set("vendor.name", v)} />
-              <Field label="Email" value={form.vendor.email} type="email" onChange={(v) => set("vendor.email", v)} />
+              <Field label="Vendor Name" value={form.vendor?.name ?? ""} onChange={(v) => set("vendor.name", v)} />
+              <Field label="Email" value={form.vendor?.email ?? ""} type="email" onChange={(v) => set("vendor.email", v)} />
               <div className="col-span-2">
-                <Field label="Address" value={form.vendor.address} onChange={(v) => set("vendor.address", v)} />
+                <Field label="Address" value={form.vendor?.address ?? ""} onChange={(v) => set("vendor.address", v)} />
               </div>
-              <Field label="Country Code" value={form.vendor.country_code} onChange={(v) => set("vendor.country_code", v)} />
-              <Field label="Mobile Number" value={form.vendor.mobile_number} onChange={(v) => set("vendor.mobile_number", v)} />
-              <Field label="GST Number" value={form.vendor.gst_number} onChange={(v) => set("vendor.gst_number", v)} />
-              <Field label="Bank Name" value={form.vendor.bank_name} onChange={(v) => set("vendor.bank_name", v)} />
-              <Field label="Account Holder" value={form.vendor.account_holder_name} onChange={(v) => set("vendor.account_holder_name", v)} />
-              <Field label="Account Number" value={form.vendor.account_number} onChange={(v) => set("vendor.account_number", v)} />
-              <Field label="IFSC Code" value={form.vendor.ifsc_code} onChange={(v) => set("vendor.ifsc_code", v)} />
+              <Field label="Country Code" value={form.vendor?.country_code ?? ""} onChange={(v) => set("vendor.country_code", v)} />
+              <Field label="Mobile Number" value={form.vendor?.mobile_number ?? ""} onChange={(v) => set("vendor.mobile_number", v)} />
+              <Field label="GST Number" value={form.vendor?.gst_number ?? ""} onChange={(v) => set("vendor.gst_number", v)} />
+              <Field label="Bank Name" value={form.vendor?.bank_name ?? ""} onChange={(v) => set("vendor.bank_name", v)} />
+              <Field label="Account Holder" value={form.vendor?.account_holder_name ?? ""} onChange={(v) => set("vendor.account_holder_name", v)} />
+              <Field label="Account Number" value={form.vendor?.account_number ?? ""} onChange={(v) => set("vendor.account_number", v)} />
+              <Field label="IFSC Code" value={form.vendor?.ifsc_code ?? ""} onChange={(v) => set("vendor.ifsc_code", v)} />
             </div>
 
             <SectionTitle title="Invoice Items" />
             <div className="flex flex-col gap-2">
-              {form.invoice_items.map((item, i) => (
+              {form.invoice_items?.map((item, i) => (
                 <div key={i} className="border border-gray-100 rounded-xl p-3 bg-gray-50 flex flex-col gap-2 relative group">
                   <button onClick={() => removeItem(i)} className="absolute top-2 right-2 text-red-300 hover:text-red-500 text-xs opacity-0 group-hover:opacity-100 transition-opacity" title="Remove item">✕</button>
                   <Field label="Description" value={item.item_description} onChange={(v) => setItem(i, "item_description", v)} />
@@ -238,10 +238,10 @@ export default function InvoicePreviewModal({ file, onClose, onUpdate }: Invoice
 
             <SectionTitle title="Totals" />
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Subtotal"         value={form.subtotal}         type="number" onChange={(v) => set("subtotal", v)} />
-              <Field label="Tax Amount"        value={form.tax_amount}       type="number" onChange={(v) => set("tax_amount", v)} />
-              <Field label="Discount Amount"   value={form.discount_amount}  type="number" onChange={(v) => set("discount_amount", v)} />
-              <Field label="Total Amount"      value={form.total_amount}     type="number" onChange={(v) => set("total_amount", v)} />
+              <Field label="Subtotal"         value={form.subtotal ?? 0}         type="number" onChange={(v) => set("subtotal", v)} />
+              <Field label="Tax Amount"        value={form.tax_amount ?? 0}       type="number" onChange={(v) => set("tax_amount", v)} />
+              <Field label="Discount Amount"   value={form.discount_amount ?? 0}  type="number" onChange={(v) => set("discount_amount", v)} />
+              <Field label="Total Amount"      value={form.total_amount ?? 0}     type="number" onChange={(v) => set("total_amount", v)} />
             </div>
           </div>
 
